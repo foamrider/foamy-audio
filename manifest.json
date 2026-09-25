@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "id": "foamy.audio",
+  "name": "Foamy Audio",
+  "version": "1.0.0",
+  "author": "foamrider",
+  "description": "Audio outputs, microphones, per-app volumes and AirPlay",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Audio",
+    "description": "Volume, device selection and per-app mixer",
+    "category": "Audio",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "language": "system",
+      "showPercentage": true,
+      "scrollVolumeStep": "3"
+    },
+    "schema": [
+      {
+        "key": "language",
+        "type": "enum",
+        "label": "Language",
+        "defaultValue": "system",
+        "options": [
+          "system",
+          "en",
+          "nb"
+        ]
+      },
+      {
+        "key": "showPercentage",
+        "type": "boolean",
+        "label": "Show bar percentage",
+        "defaultValue": true
+      },
+      {
+        "key": "scrollVolumeStep",
+        "type": "enum",
+        "label": "Volume scroll step",
+        "defaultValue": "3",
+        "options": [
+          "3",
+          "5"
+        ]
+      }
+    ]
+  },
+  "license": "MIT"
+}
