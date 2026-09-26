@@ -5,6 +5,7 @@ var fields = [
   { key: "scrollVolumeStep", type: "enum", label: "Volume scroll step", defaultValue: "3", options: ["3", "5"] }
 ]
 var norwegian = {
+  "Microphone level unavailable":"Mikrofonnivå er utilgjengelig",
   "Audio":"Lyd", "Output":"Utgang", "Input":"Inngang", "Apps":"Apper", "Wireless":"Trådløst",
   "Settings":"Innstillinger", "Back":"Tilbake", "Language":"Språk", "System":"System",
   "Show bar percentage":"Vis prosent i linjen", "Volume scroll step":"Volumtrinn ved rulling",

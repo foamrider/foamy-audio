@@ -9,6 +9,12 @@ Audio outputs, microphones, app volume, and AirPlay.
 Requires Omarchy Quattro with PipeWire. For AirPlay, also install
 `pipewire-zeroconf`, `pactl`, and `avahi-browse`.
 
+Microphone metering uses Quickshell for stereo sources. Other channel layouts,
+including Pro Audio AUX microphones, use Python 3 and PipeWire's `pw-record`
+with the source's channel map. Capture runs only while the panel is open;
+only level numbers leave the helper, and no audio is saved or transmitted.
+Closing the panel or switching microphones stops the previous capture.
+
 ```sh
 omarchy plugin add https://github.com/foamrider/foamy-audio.git --enable
 ```

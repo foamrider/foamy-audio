@@ -641,9 +641,9 @@ Panel {
   PwObjectTracker { objects: root.candidateSources }
   PwObjectTracker { objects: root.audioStreams }
 
-  PwNodePeakMonitor {
+  MicrophonePeak {
     id: inputPeakMonitor
-    node: root.source
+    source: root.source
     enabled: root.opened && !!root.source
   }
 
@@ -782,7 +782,8 @@ Panel {
         output:root.sink ? root.nodeLabel(root.sink) : "",input:root.source ? root.nodeLabel(root.source) : "",
         volume:root.outputVolume,inputVolume:root.inputVolume,outputMuted:root.outputMuted,inputMuted:root.inputMuted,
         outputs:root.displayAudioSinks.length,inputs:root.displayAudioSources.length,apps:root.displayAudioStreams.length,
-        wireless:root.airplayScanState,settingsError:root.settingsError})
+        wireless:root.airplayScanState,settingsError:root.settingsError,
+        microphonePeak:inputPeakMonitor.peak,microphoneMeterError:inputPeakMonitor.error})
     }
   }
 
@@ -964,6 +965,7 @@ Panel {
             spacing: Style.space(2)
             SectionHeader { width:parent.width;label:root.tr("Input");expanded:root.inputExpanded;onToggled:root.inputExpanded=!root.inputExpanded }
             Label { visible:root.inputExpanded&&!root.displayAudioSources.length;width:parent.width;text:root.tr("No input devices");color:root.secondary }
+            Label { visible:root.inputExpanded&&inputPeakMonitor.error!=="";width:parent.width;text:root.tr(inputPeakMonitor.error);color:Color.urgent;wrapMode:Text.WordWrap }
             Repeater {
               model: root.inputExpanded ? root.displayAudioSources : []
               AudioRow {
