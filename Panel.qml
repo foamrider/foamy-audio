@@ -793,13 +793,14 @@ Panel {
     text: ""
     labelVisible: false
     hasVisualContent: true
-    fixedWidth: root.vertical ? -1 : Math.max(Style.bar.iconSlot, barContent.implicitWidth + Style.space(12))
+    fixedWidth: root.vertical ? -1 : Math.max(Style.bar.iconSlot,
+      barContent.implicitWidth + Style.bar.iconSlot - Style.bar.iconCanvas)
     dimmed: root.outputMuted
     tooltipText: root.tr("Audio") + (root.sink ? " · " + root.nodeLabel(root.sink) : "")
     Row {
       id: barContent
       anchors.centerIn: parent
-      spacing: Style.space(4)
+      spacing: Style.space(1)
       OpticalGlyph { width:Style.bar.iconCanvas;height:Style.bar.iconCanvas;text:root.outputIcon();fontFamily:button.fontFamily;fontSize:button.fontSize;color:button.foreground }
       Text { visible:root.preference("showPercentage")&&!root.vertical;text:Math.round(root.outputVolume*100)+"%";textFormat:Text.PlainText;color:button.foreground;font.family:button.fontFamily;font.pixelSize:button.fontSize;anchors.verticalCenter:parent.verticalCenter }
     }
