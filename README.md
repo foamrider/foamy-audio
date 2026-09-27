@@ -2,11 +2,11 @@
 
 Audio outputs, microphones, app volume, and AirPlay.
 
-![Foamy Audio screenshot](screenshot.png)
+![Foamy Audio screenshot](preview.png)
 
 ## Install
 
-Requires Omarchy Quattro with PipeWire. For AirPlay, also install
+Requires Omarchy Quattro with PipeWire, Python 3, and `jq`. For AirPlay, also install
 `pipewire-zeroconf`, `pactl`, and `avahi-browse`.
 
 AirPlay also needs incoming UDP timing/control traffic from the selected
@@ -50,6 +50,23 @@ Remove the previous audio widget from the bar when replacing it.
   is open. Discovery stops when the panel closes with no AirPlay output selected.
   Group playback uses PipeWire latency compensation; synchronization depends on
   the receivers. The vertical meter shows the selected microphone's input level.
+
+## Remove
+
+Select a local output and deselect AirPlay receivers before removal.
+
+```sh
+omarchy plugin remove foamy.audio
+```
+
+Restore the stock audio widget through the bar settings if needed. Device volumes and
+selections remain as last configured. Optional UFW rules added through
+**Firewall rules → Apply** also remain; review and remove those rules separately
+if no other AirPlay application needs them. Removing the plugin does not
+uninstall PipeWire, Avahi, or other packages.
+
+Omarchy manages the plugin entry in `shell.json`. Packages and data outside
+the plugin directory are retained unless you remove them separately.
 
 ## License
 
