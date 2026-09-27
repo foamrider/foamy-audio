@@ -55,9 +55,10 @@ Panel {
     for (var i = 0; i < nodes.length; i++) {
       var n = nodes[i]
       if (!n || !n.isStream || !isPlaybackStream(n)) continue
-      // A tuning's output is a playback stream too, but it is the processing
-      // itself rather than an application, so it does not belong in the list.
-      if (String(n.name || "").indexOf("omarchy_speaker_tuning") === 0) continue
+      // Tuning and AirPlay group outputs route audio internally; they are not apps.
+      var name = String(n.name || "")
+      if (name.indexOf("omarchy_speaker_tuning") === 0
+          || name.indexOf("output.foamy_airplay_group_") === 0) continue
       list.push(n)
     }
     return list
@@ -82,7 +83,6 @@ Panel {
   }
 
   property var cachedAudioSinks: []
-  property var cachedWirelessAudioSinks: []
   property var cachedAudioSources: []
 
   readonly property var rawAudioSinks: {
@@ -112,8 +112,7 @@ Panel {
   }
 
   readonly property var audioSinks: rawAudioSinks.length > 0 ? rawAudioSinks : cachedAudioSinks
-  readonly property var wirelessAudioSinks: rawWirelessAudioSinks.length > 0
-    ? rawWirelessAudioSinks : cachedWirelessAudioSinks
+  readonly property var wirelessAudioSinks: rawWirelessAudioSinks
   readonly property var audioSources: rawAudioSources.length > 0 ? rawAudioSources : cachedAudioSources
 
   readonly property var audioStreams: {
@@ -145,9 +144,7 @@ Panel {
   // selected while a tuning still exists.
   property string volumeSinkName: ""
 
-  // Carry sub-notch touchpad deltas between wheel events.
-  property real wheelAccumulator: 0
-  readonly property real scrollVolumeStep: Number(preference("scrollVolumeStep")) / 100
+  readonly property real volumeStep: 0.01
 
   readonly property var volumeSink: {
     if (volumeSinkName === "" || !sink) return sink
@@ -165,8 +162,10 @@ Panel {
   onSinkChanged: {
     resolveVolumeSink()
     if (airplayDiscoveryActive && sink && !isAirplaySink(sink)
-        && !airplayStartProc.running && !airplayStopProc.running)
-      stopAirplayDiscovery(sink)
+        && !airplayStartProc.running && !airplayStopProc.running && !airplaySelectProc.running) {
+      if (opened) selectLocalSink(sink)
+      else stopAirplayDiscovery(sink)
+    }
   }
 
   function resolveVolumeSink() {
@@ -186,6 +185,7 @@ Panel {
   property string airplayStopResultState: "idle"
   property int airplayScanAnimationStep: 0
   property var airplayPeers: []
+  property var selectedAirplayNames: []
   property bool stopAirplayAfterStart: false
   property bool scanAirplayAfterStop: false
   readonly property bool airplayActive: isAirplaySink(sink)
@@ -219,7 +219,6 @@ Panel {
   onRawAudioSinksChanged: if (rawAudioSinks.length > 0) cachedAudioSinks = rawAudioSinks
   onRawWirelessAudioSinksChanged: {
     if (rawWirelessAudioSinks.length > 0) {
-      cachedWirelessAudioSinks = rawWirelessAudioSinks
       if (airplayDiscoveryActive) {
         airplayScanState = "results"
         airplayScanTimeout.stop()
@@ -239,7 +238,7 @@ Panel {
   onOpenedChanged: {
     if (opened) {
       outputExpanded = true
-      wirelessExpanded = false
+      wirelessExpanded = airplayActive
       inputExpanded = true
       sourcesExpanded = false
       stopAirplayAfterStart = false
@@ -253,7 +252,7 @@ Panel {
       scanAirplayAfterStop = false
       clearDisplayAudioModels()
       if (airplayStartProc.running) stopAirplayAfterStart = true
-      else if (airplayDiscoveryActive && !airplayActive && !airplayStopProc.running)
+      else if (airplayDiscoveryActive && !airplayActive && !airplayStopProc.running && !airplaySelectProc.running)
         stopAirplayDiscovery(null, true)
     }
   }
@@ -261,6 +260,7 @@ Panel {
   // Defer model replacement until PipeWire finishes its node-removal signal.
   onAudioSinksChanged: scheduleDisplayAudioModelRefresh()
   onWirelessAudioSinksChanged: scheduleDisplayAudioModelRefresh()
+  onAirplayPeersChanged: scheduleDisplayAudioModelRefresh()
   onAudioSourcesChanged: scheduleDisplayAudioModelRefresh()
   onAudioStreamsChanged: scheduleDisplayAudioModelRefresh()
 
@@ -271,7 +271,7 @@ Panel {
   function refreshDisplayAudioModels() {
     if (!opened) return
     displayAudioSinks = listSnapshot(audioSinks)
-    displayWirelessAudioSinks = listSnapshot(wirelessAudioSinks)
+    displayWirelessAudioSinks = Model.uniqueAirplaySinks(listSnapshot(rawWirelessAudioSinks), airplayPeers, sink)
     displayAudioSources = listSnapshot(audioSources)
     displayAudioStreams = listSnapshot(audioStreams)
   }
@@ -289,9 +289,13 @@ Panel {
     displayAudioStreams = []
   }
 
-  function resetScroll() { panelScroll.contentY = 0 }
+  function resetScroll() { panelScroll.contentY = 0; settingsPane.resetScroll() }
   function keepFocusVisible(item) {
     if (!item || !opened) return
+    // Fixed header/footer controls must never move the scrolling device list.
+    var ancestor = item
+    while (ancestor && ancestor !== panelScroll.contentItem) ancestor = ancestor.parent
+    if (!ancestor) return
     var pt = item.mapToItem(panelScroll.contentItem, 0, 0)
     var maxY = Math.max(0, panelScroll.contentHeight - panelScroll.height)
     if (pt.y < panelScroll.contentY) panelScroll.contentY = Math.max(0, pt.y - Style.space(8))
@@ -300,6 +304,7 @@ Panel {
   }
 
   function outputIcon(volume) {
+    if (airplayActive) return "󱝉" // nf-md-cast_audio_variant (U+F1749).
     // Match the old Waybar pulseaudio glyph set. The Material Design speaker
     // icons render visually smaller in JetBrainsMono Nerd Font.
     if (!sink || !sink.audio) return ""
@@ -343,7 +348,6 @@ Panel {
     airplayError = ""
     airplayScanState = "scanning"
     airplayScanAnimationStep = 0
-    cachedWirelessAudioSinks = []
     airplayStartProc.command = [
       "python3", airplayBridge, "start",
       "--restore-id", restore && restore.id !== undefined ? String(restore.id) : "",
@@ -364,6 +368,7 @@ Panel {
 
     airplayDiscoveryActive = true
     airplayPeers = payload.peers && payload.peers.slice ? payload.peers.slice() : []
+    selectedAirplayNames = payload.selectedNames || []
     if (stopAirplayAfterStart || !opened) {
       stopAirplayAfterStart = false
       stopAirplayDiscovery(null, true)
@@ -371,7 +376,6 @@ Panel {
     }
     stopAirplayAfterStart = false
     if (rawWirelessAudioSinks.length > 0) {
-      cachedWirelessAudioSinks = rawWirelessAudioSinks
       airplayScanState = "results"
     } else {
       airplayScanState = "scanning"
@@ -405,7 +409,7 @@ Panel {
     airplayError = ""
     airplayScanState = airplayStopResultState
     airplayPeers = []
-    cachedWirelessAudioSinks = []
+    selectedAirplayNames = []
     scheduleDisplayAudioModelRefresh()
     if (scanAirplayAfterStop && opened) {
       scanAirplayAfterStop = false
@@ -421,20 +425,40 @@ Panel {
     airplayDiscoveryActive = payload.active === true
     if (!airplayDiscoveryActive) return
     airplayPeers = payload.peers && payload.peers.slice ? payload.peers.slice() : []
+    selectedAirplayNames = payload.selectedNames || []
     airplayScanState = rawWirelessAudioSinks.length > 0 ? "results" : "scanning"
     if (airplayScanState === "scanning") airplayScanTimeout.restart()
   }
 
+  function airplaySelected(node) {
+    if (!node || !airplayActive) return false
+    return sink.name === node.name || (String(sink.name).indexOf("foamy_airplay_group_") === 0
+      && selectedAirplayNames.indexOf(String(node.name)) >= 0)
+  }
+
   function selectAirplaySink(node) {
-    if (!node || !airplayDiscoveryActive) return
-    setDefaultSink(node)
-    airplayScanState = "results"
+    if (!node || !airplayDiscoveryActive || airplaySelectProc.running || airplayStopProc.running) return
+    // An external output switch can leave the saved group membership stale.
+    var names = !airplayActive ? [] : String(sink.name).indexOf("foamy_airplay_group_") === 0
+      ? selectedAirplayNames.slice() : [String(sink.name)]
+    var index = names.indexOf(String(node.name))
+    if (index < 0) names.push(String(node.name))
+    else names.splice(index, 1)
+    airplayError = ""
+    airplaySelectProc.command = ["python3", airplayBridge, "select"].concat(names)
+    airplaySelectProc.running = true
   }
 
   function selectLocalSink(node) {
-    if (!node) return
-    if (airplayDiscoveryActive) stopAirplayDiscovery(node)
-    else setDefaultSink(node)
+    if (!node || airplaySelectProc.running || airplayStopProc.running) return
+    if (!airplayDiscoveryActive) {
+      setDefaultSink(node)
+      return
+    }
+    // Disconnect receivers without unloading discovery while the list is in use.
+    airplayError = ""
+    airplaySelectProc.command = ["python3", airplayBridge, "select", "--local-name", String(node.name)]
+    airplaySelectProc.running = true
   }
 
   function inputIcon() {
@@ -532,30 +556,11 @@ Panel {
   }
 
   function airplayPeerForSink(node) {
-    if (!node) return null
-    var p = nodeProps(node)
-    var blob = String([
-      node.name,
-      node.description,
-      p["node.name"] || "",
-      p["device.description"] || ""
-    ].join(" ")).toLowerCase()
-    var fallbackRoom = Model.airplayRoomLabel(node).toLowerCase()
-    for (var i = 0; i < airplayPeers.length; i++) {
-      var peer = airplayPeers[i]
-      if (!peer) continue
-      var address = String(peer.address || "").toLowerCase()
-      var hostname = String(peer.hostname || "").toLowerCase().replace(/\.local$/, "")
-      var room = String(peer.name || "").toLowerCase()
-      if ((address && blob.indexOf(address) !== -1)
-          || (hostname && blob.indexOf(hostname) !== -1)
-          || (room && room === fallbackRoom))
-        return peer
-    }
-    return null
+    return Model.airplayPeerForSink(node, airplayPeers)
   }
 
   function airplayRoomLabel(node) {
+    if (node && String(node.name).indexOf("foamy_airplay_group_") === 0) return tr("AirPlay group")
     var peer = airplayPeerForSink(node)
     return peer && peer.name ? String(peer.name) : Model.airplayRoomLabel(node)
   }
@@ -628,6 +633,32 @@ Panel {
     return Model.streamLabel(node, mprisPlayers, displayAudioStreams)
   }
 
+  function appIconSource(icon) {
+    var value = String(icon || "")
+    if (!value) return ""
+    if (value.indexOf("file://") === 0) return value
+    if (value.charAt(0) === "/") return Util.fileUrl(value)
+    return Quickshell.iconPath(value, true)
+  }
+
+  function streamIconSource(node) {
+    var properties = Model.nodeProps(node)
+    var supplied = appIconSource(properties["application.icon-name"])
+    if (supplied) return supplied
+    // Some streams omit an icon or desktop ID; resolve the installed app by identity.
+    DesktopEntries.applications.values
+    var candidates = [properties["application.id"], properties["application.process.binary"],
+      properties["application.name"], streamLabel(node), node ? node.name : ""]
+    for (var i = 0; i < candidates.length; i++) {
+      if (!candidates[i]) continue
+      var name = String(candidates[i]).replace(/\.desktop$/, "")
+      var entry = DesktopEntries.byId(name) || DesktopEntries.heuristicLookup(name)
+      var source = entry ? appIconSource(entry.icon) : ""
+      if (source) return source
+    }
+    return ""
+  }
+
   function streamRepresentsPlayer(node, player) {
     return Model.streamRepresentsPlayer(node, player, mprisPlayers, displayAudioStreams)
   }
@@ -644,6 +675,8 @@ Panel {
   MicrophonePeak {
     id: inputPeakMonitor
     source: root.source
+    // Waking an idle microphone can steal the clock driving network playback.
+    passive: root.airplayActive
     enabled: root.opened && !!root.source
   }
 
@@ -670,6 +703,23 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.applyAirplayStart(text)
+    }
+  }
+
+  Process {
+    id: airplaySelectProc
+    stdout: StdioCollector { id: airplaySelectOutput; waitForEnd: true }
+    onExited: function(code) {
+      var payload = root.parseAirplayPayload(airplaySelectOutput.text)
+      if (code !== 0 || payload.ok !== true) {
+        root.airplayError = String(payload.error || "Could not change output.")
+        root.airplayScanState = "error"
+        return
+      }
+      root.selectedAirplayNames = payload.selectedNames || []
+      root.airplayScanState = "results"
+      if (!root.selectedAirplayNames.length && !root.opened)
+        root.stopAirplayDiscovery(null, true)
     }
   }
 
@@ -715,7 +765,7 @@ Panel {
     onTriggered: if (!sinkAvailabilityProc.running) sinkAvailabilityProc.running = true
   }
 
-  // Runs whether or not the panel is open: the bar shows and scrolls the output
+  // Runs whether or not the panel is open: the bar shows the output
   // volume too, so an unresolved sink there would read and change the virtual
   // tuning sink instead of the speakers.
   Timer {
@@ -761,7 +811,7 @@ Panel {
   function openSettings() { open(); editingSettings = true; resetScroll(); Qt.callLater(function() { settingsPane.focusBack() }) }
   function closeSettings() { editingSettings = false; resetScroll(); Qt.callLater(function() { settingsButton.forceActiveFocus() }) }
   function volumeNodeFor(node) { return node && sink && node.id === sink.id ? volumeSink : node }
-  function rowIcon(node) { return isAirplaySink(node) ? "airplay" : isHeadphones(node) ? "headphones" : "speaker" }
+  function rowIcon(node) { return isAirplaySink(node) ? "cast-audio-variant" : isHeadphones(node) ? "headphones" : "speaker" }
   function muteNode(node) { if (node && node.audio) node.audio.muted = !node.audio.muted }
   Process {
     id: preferencesSave
@@ -782,7 +832,7 @@ Panel {
         output:root.sink ? root.nodeLabel(root.sink) : "",input:root.source ? root.nodeLabel(root.source) : "",
         volume:root.outputVolume,inputVolume:root.inputVolume,outputMuted:root.outputMuted,inputMuted:root.inputMuted,
         outputs:root.displayAudioSinks.length,inputs:root.displayAudioSources.length,apps:root.displayAudioStreams.length,
-        wireless:root.airplayScanState,settingsError:root.settingsError,
+        wireless:root.airplayScanState,wirelessError:root.airplayError,wirelessOutputs:root.displayWirelessAudioSinks.map(function(n){return {name:n.name,label:root.airplayRoomLabel(n),selected:root.airplaySelected(n)}}),settingsError:root.settingsError,
         microphonePeak:inputPeakMonitor.peak,microphoneMeterError:inputPeakMonitor.error})
     }
   }
@@ -806,12 +856,6 @@ Panel {
       Text { visible:root.preference("showPercentage")&&!root.vertical;text:Math.round(root.outputVolume*100)+"%";textFormat:Text.PlainText;color:button.foreground;font.family:button.fontFamily;font.pixelSize:button.fontSize;anchors.verticalCenter:parent.verticalCenter }
     }
     onPressed: function(b) { if (b === Qt.RightButton) root.toggleAllMuted(); else root.toggle() }
-    onWheelMoved: function(delta) {
-      if (!root.hasOutput) return
-      var wheel = Util.wheelSteps(root.wheelAccumulator, delta)
-      root.wheelAccumulator = wheel.remainder
-      if (wheel.steps) root.showVolumeOsd(root.setOutputVolume(root.outputVolume + wheel.steps * root.scrollVolumeStep))
-    }
   }
 
   AudioPopup {
@@ -825,18 +869,10 @@ Panel {
     focusTarget: root.editingSettings ? settingsPane.backTarget : panelScroll
     borderSpec: Border.flat(Qt.alpha(Color.popups.text, 0.15), 1)
     contentWidth: fittedContentWidth(Style.space(420))
-    contentHeight: fittedContentHeight(root.editingSettings ? settingsPane.implicitHeight : panelColumn.implicitHeight, Style.space(740))
-    Flickable {
-      id: panelScroll
+    contentHeight: fittedContentHeight(root.editingSettings ? settingsPane.implicitHeight : panelHeader.implicitHeight + panelColumn.implicitHeight + panelFooter.height, Style.space(740))
+    Item {
+      id: panelContent
       anchors.fill: parent
-      clip: true
-      contentWidth: width
-      contentHeight: root.editingSettings ? settingsPane.implicitHeight : panelColumn.implicitHeight
-      flickableDirection: Flickable.VerticalFlick
-      boundsBehavior: Flickable.StopAtBounds
-      onContentHeightChanged: contentY = Math.max(0, Math.min(contentY, contentHeight-height))
-      onHeightChanged: contentY = Math.max(0, Math.min(contentY, contentHeight-height))
-      Controls.ScrollBar.vertical: Controls.ScrollBar { policy: Controls.ScrollBar.AsNeeded }
       Keys.onEscapePressed: root.editingSettings ? root.closeSettings() : root.close()
       Keys.onPressed: function(event) {
         if (root.editingSettings) return
@@ -857,7 +893,7 @@ Panel {
       SettingsPane {
         id: settingsPane
         visible: root.editingSettings
-        width: panelScroll.width
+        anchors.fill: parent
         settings: root.settings
         language: root.language
         saving: preferencesSave.running
@@ -866,76 +902,90 @@ Panel {
         onBack: root.closeSettings()
         onClearError: root.settingsError = ""
       }
-      Column {
-        id: panelColumn
-        width: panelScroll.width
+      Item {
+        id: panelHeader
         visible: !root.editingSettings
-        Item {
-          width: parent.width
-          implicitHeight: heroContent.implicitHeight + Style.space(34)
-          Canvas {
-            id: headerWash
-            anchors.fill: parent
-            onWidthChanged: requestPaint()
-            onHeightChanged: requestPaint()
-            onPaint: {
-              var ctx = getContext("2d")
-              ctx.reset()
-              // Clip the wash to the same rounded top corners as the popup.
-              var radius=Style.space(13)
-              ctx.beginPath();ctx.moveTo(radius,0);ctx.lineTo(width-radius,0)
-              ctx.quadraticCurveTo(width,0,width,radius);ctx.lineTo(width,height)
-              ctx.lineTo(0,height);ctx.lineTo(0,radius);ctx.quadraticCurveTo(0,0,radius,0)
-              ctx.closePath();ctx.clip()
-              var wash = ctx.createLinearGradient(0,0,width*0.5,height)
-              wash.addColorStop(0,Qt.tint(Color.popups.background,Qt.alpha(Color.accent,0.08)))
-              wash.addColorStop(1,Color.popups.background)
-              ctx.fillStyle=wash;ctx.fillRect(0,0,width,height)
-              var glow=ctx.createRadialGradient(width*0.9,0,0,width*0.9,0,width*0.85)
-              glow.addColorStop(0,Qt.alpha(Color.accent,0.17));glow.addColorStop(1,"transparent")
-              ctx.fillStyle=glow;ctx.fillRect(0,0,width,height)
-            }
-            Connections { target:Color;function onAccentChanged(){headerWash.requestPaint()} function onShellValuesChanged(){headerWash.requestPaint()} function onBackgroundChanged(){headerWash.requestPaint()} }
+        width: parent.width
+        implicitHeight: heroContent.implicitHeight + Style.space(34)
+        Canvas {
+          id: headerWash
+          anchors.fill: parent
+          onWidthChanged: requestPaint()
+          onHeightChanged: requestPaint()
+          onPaint: {
+            var ctx = getContext("2d")
+            ctx.reset()
+            // Clip the wash to the same rounded top corners as the popup.
+            var radius=Style.space(13)
+            ctx.beginPath();ctx.moveTo(radius,0);ctx.lineTo(width-radius,0)
+            ctx.quadraticCurveTo(width,0,width,radius);ctx.lineTo(width,height)
+            ctx.lineTo(0,height);ctx.lineTo(0,radius);ctx.quadraticCurveTo(0,0,radius,0)
+            ctx.closePath();ctx.clip()
+            var wash = ctx.createLinearGradient(0,0,width*0.5,height)
+            wash.addColorStop(0,Qt.tint(Color.popups.background,Qt.alpha(Color.accent,0.08)))
+            wash.addColorStop(1,Color.popups.background)
+            ctx.fillStyle=wash;ctx.fillRect(0,0,width,height)
+            var glow=ctx.createRadialGradient(width*0.9,0,0,width*0.9,0,width*0.85)
+            glow.addColorStop(0,Qt.alpha(Color.accent,0.17));glow.addColorStop(1,"transparent")
+            ctx.fillStyle=glow;ctx.fillRect(0,0,width,height)
           }
-          Column {
-            id: heroContent
-            anchors.centerIn: parent
-            width: parent.width-Style.space(40)
-            spacing: Style.space(14)
-            Row {
-              width: parent.width
-              spacing: Style.space(4)
-              Label { text:root.tr("Audio");width:parent.width-Style.space(108);height:Style.space(32);verticalAlignment:Text.AlignVCenter;font.pixelSize:Style.space(14) }
-              AudioAction { id:outputMuteButton;width:Style.space(32);height:width;iconSize:Style.space(16);iconName:root.outputMuted?"volume-x":"volume-2";foreground:root.secondary;enabled:root.hasOutput;tooltipText:root.tr(root.outputMuted?"Unmute output":"Mute output");onClicked:root.toggleOutputMute() }
-              AudioAction { width:Style.space(32);height:width;iconSize:Style.space(16);iconName:root.inputMuted?"mic-off":"mic";foreground:root.inputMuted?Color.urgent:root.secondary;enabled:root.hasInput;tooltipText:root.tr(root.inputMuted?"Unmute microphone":"Mute microphone");onClicked:root.toggleInputMute() }
-              AudioAction { id:settingsButton;width:Style.space(32);height:width;iconSize:Style.space(16);foreground:root.secondary;tooltipText:root.tr("Settings");onClicked:root.openSettings() }
-            }
-            Row {
-              width: parent.width
-              spacing: Style.space(16)
-              Row {
-                id: heroVolume
-                spacing: Style.space(4)
-                opacity: root.outputMuted ? 0.5 : 1
-                Label { text:root.hasOutput?String(Math.round(outputSlider.value*100)):"—";font.pixelSize:Style.space(54);font.letterSpacing:-2 }
-                Label { text:root.hasOutput?"%":"";font.pixelSize:Style.space(19);anchors.bottom:parent.bottom;anchors.bottomMargin:Style.space(7) }
-              }
-              Label { width:Math.max(0,parent.width-heroVolume.width-parent.spacing);text:root.sink?(root.airplayActive?root.airplayRoomLabel(root.sink):root.nodeLabel(root.sink)):root.tr("No output devices");font.pixelSize:Style.space(15);wrapMode:Text.WordWrap;anchors.verticalCenter:parent.verticalCenter }
-            }
-            AudioSlider {
-              id: outputSlider
-              width: parent.width
-              label: root.tr("Volume")
-              enabled: root.hasOutput
-              value: root.outputVolume
-              stepSize: root.scrollVolumeStep
-              onMoved: root.setOutputVolume(value)
-              onMuteRequested: root.toggleOutputMute()
-            }
-          }
+          Connections { target:Color;function onAccentChanged(){headerWash.requestPaint()} function onShellValuesChanged(){headerWash.requestPaint()} function onBackgroundChanged(){headerWash.requestPaint()} }
         }
         Column {
+          id: heroContent
+          anchors.centerIn: parent
           width: parent.width-Style.space(40)
+          spacing: Style.space(14)
+          Row {
+            width: parent.width
+            spacing: Style.space(4)
+            Label { text:root.tr("Audio");width:parent.width-Style.space(108);height:Style.space(32);verticalAlignment:Text.AlignVCenter;font.pixelSize:Style.space(14) }
+            AudioAction { id:outputMuteButton;width:Style.space(32);height:width;iconSize:Style.space(16);iconName:root.outputMuted?"volume-x":"volume-2";foreground:root.secondary;enabled:root.hasOutput;tooltipText:root.tr(root.outputMuted?"Unmute output":"Mute output");onClicked:root.toggleOutputMute() }
+            AudioAction { width:Style.space(32);height:width;iconSize:Style.space(16);iconName:root.inputMuted?"mic-off":"mic";foreground:root.inputMuted?Color.urgent:root.secondary;enabled:root.hasInput;tooltipText:root.tr(root.inputMuted?"Unmute microphone":"Mute microphone");onClicked:root.toggleInputMute() }
+            AudioAction { id:settingsButton;width:Style.space(32);height:width;iconSize:Style.space(16);foreground:root.secondary;tooltipText:root.tr("Settings");onClicked:root.openSettings() }
+          }
+          Row {
+            width: parent.width
+            spacing: Style.space(16)
+            Row {
+              id: heroVolume
+              spacing: Style.space(4)
+              opacity: root.outputMuted ? 0.5 : 1
+              Label { text:root.hasOutput?String(Math.round(outputSlider.value*100)):"—";font.pixelSize:Style.space(54);font.letterSpacing:-2 }
+              Label { text:root.hasOutput?"%":"";font.pixelSize:Style.space(19);anchors.bottom:parent.bottom;anchors.bottomMargin:Style.space(7) }
+            }
+            Label { width:Math.max(0,parent.width-heroVolume.width-parent.spacing);text:root.sink?(root.airplayActive?root.airplayRoomLabel(root.sink):root.nodeLabel(root.sink)):root.tr("No output devices");font.pixelSize:Style.space(15);wrapMode:Text.WordWrap;anchors.verticalCenter:parent.verticalCenter }
+          }
+          AudioSlider {
+            id: outputSlider
+            width: parent.width
+            label: root.tr("Volume")
+            enabled: root.hasOutput
+            value: root.outputVolume
+            stepSize: root.volumeStep
+            onMoved: root.setOutputVolume(value)
+            onMuteRequested: root.toggleOutputMute()
+          }
+        }
+      }
+      Flickable {
+        id: panelScroll
+        visible: !root.editingSettings
+        anchors.top: panelHeader.bottom
+        anchors.bottom: panelFooter.top
+        width: parent.width
+        clip: true
+        contentWidth: width
+        contentHeight: panelColumn.implicitHeight
+        flickableDirection: Flickable.VerticalFlick
+        boundsBehavior: Flickable.StopAtBounds
+        onContentHeightChanged: contentY = Math.max(0, Math.min(contentY, contentHeight-height))
+        onHeightChanged: contentY = Math.max(0, Math.min(contentY, contentHeight-height))
+        Controls.ScrollBar.vertical: Controls.ScrollBar { policy: Controls.ScrollBar.AsNeeded }
+        Column {
+          id: panelColumn
+          width: parent.width-Style.space(40)
+          bottomPadding: Style.space(14)
           anchors.horizontalCenter: parent.horizontalCenter
           spacing: Style.space(14)
           Column {
@@ -953,7 +1003,7 @@ Panel {
                 label: root.nodeLabel(node)
                 iconName: root.rowIcon(node)
                 selected: !!(root.sink&&node&&root.sink.id===node.id)
-                step: root.scrollVolumeStep
+                step: root.volumeStep
                 secondary: root.secondary
                 onActivated: root.selectLocalSink(node)
                 onMuteRequested: root.muteNode(volumeNode)
@@ -978,7 +1028,7 @@ Panel {
                 levelDescription: root.tr("Microphone level")
                 level: root.inputMuted ? 0 : inputPeakMonitor.peak
                 selected: !!(root.source&&node&&root.source.id===node.id)
-                step: root.scrollVolumeStep
+                step: root.volumeStep
                 secondary: root.secondary
                 onActivated: root.setDefaultSource(node)
                 onMuteRequested: root.muteNode(node)
@@ -998,9 +1048,10 @@ Panel {
                 width: parent.width
                 node: modelData
                 label: root.streamLabel(node)
+                iconSource: root.streamIconSource(node)
                 iconName: node&&node.audio&&node.audio.muted?"volume-x":"app-window"
                 stream: true
-                step: root.scrollVolumeStep
+                step: root.volumeStep
                 secondary: root.secondary
                 onActivated: root.muteNode(node)
                 onMuteRequested: root.muteNode(node)
@@ -1025,22 +1076,42 @@ Panel {
                 width: parent.width
                 node: modelData
                 label: root.airplayRoomLabel(node)
-                iconName: "airplay"
-                selected: !!(root.sink&&node&&root.sink.id===node.id)
-                step: root.scrollVolumeStep
+                iconName: "cast-audio-variant"
+                multiSelect: true
+                selected: root.airplaySelected(node)
+                volumeVisible: selected
+                enabled: !airplaySelectProc.running && !airplayStopProc.running
+                step: root.volumeStep
                 secondary: root.secondary
                 onActivated: root.selectAirplaySink(node)
                 onMuteRequested: root.muteNode(node)
               }
             }
           }
-          Item {
-            width: parent.width
-            height: Style.space(40)
-            AudioAction { anchors.right:parent.right;iconName:root.anyAudible?"volume-x":"volume-2";label:root.tr(root.anyAudible?"Mute all":"Unmute all");foreground:root.secondary;enabled:root.hasOutput||root.hasInput;onClicked:root.toggleAllMuted() }
-          }
         }
-        Rectangle { width:parent.width;height:Style.space(2);color:Qt.alpha(Color.accent,0.15) }
+      }
+      Item {
+        id: panelFooter
+        visible: !root.editingSettings
+        anchors.bottom: parent.bottom
+        width: parent.width
+        height: Style.space(56)
+        Rectangle {
+          x: Style.space(20)
+          width: parent.width-Style.space(40)
+          height: 1
+          color: Qt.alpha(Color.popups.text, 0.15)
+        }
+        AudioAction {
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(20)
+          anchors.verticalCenter: parent.verticalCenter
+          iconName: root.anyAudible ? "volume-x" : "volume-2"
+          label: root.tr(root.anyAudible ? "Mute all" : "Unmute all")
+          foreground: root.secondary
+          enabled: root.hasOutput || root.hasInput
+          onClicked: root.toggleAllMuted()
+        }
       }
     }
   }

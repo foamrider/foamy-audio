@@ -115,10 +115,41 @@ function isAirplaySink(node) {
   var api = String(p["device.api"] || p["node.driver"] || "").toLowerCase()
   var name = String(node.name || p["node.name"] || "").toLowerCase()
   return api === "raop"
+    || name.indexOf("foamy_airplay_group_") === 0
     || name.indexOf("raop_sink") !== -1
     || name.indexOf("raop-sink") !== -1
     || String(p["raop.ip"] || "") !== ""
     || String(p["raop.name"] || "") !== ""
+}
+
+function airplayPeerForSink(node, peers) {
+  if (!node) return null
+  var p = nodeProps(node)
+  var name = String(node.name || p["node.name"] || "").toLowerCase()
+  // Match complete endpoints first: an IP prefix can name a different room.
+  for (var i = 0; i < peers.length; i++) {
+    var peer = peers[i]
+    var endpoint = String(peer.hostname || "") + "." + String(peer.address || "") + "." + String(peer.port || "")
+    if (name === "raop_sink." + endpoint.toLowerCase()
+        || (peer.address && String(p["raop.ip"] || "") === peer.address)) return peer
+  }
+  var room = airplayRoomLabel(node).toLowerCase()
+  var matches = peers.filter(function(peer) { return String(peer.name || "").toLowerCase() === room })
+  return matches.length === 1 ? matches[0] : null
+}
+
+function uniqueAirplaySinks(nodes, peers, selected) {
+  var result = [], keys = []
+  nodes.forEach(function(node) {
+    if (String(node.name || "").indexOf("foamy_airplay_group_") === 0) return
+    var peer = airplayPeerForSink(node, peers)
+    var key = peer ? String(peer.hostname).toLowerCase() + ":" + peer.port : node.name
+    var index = keys.indexOf(key)
+    if (index < 0) { keys.push(key); result.push(node) }
+    // Keep the active endpoint when multiple interfaces expose one receiver.
+    else if (selected && node.name === selected.name) result[index] = node
+  })
+  return result
 }
 
 function cleanAirplayLabel(text) {
@@ -379,6 +410,8 @@ if (typeof module !== "undefined") {
     bluetoothDeviceIsHeadset: bluetoothDeviceIsHeadset,
     nodeLabel: nodeLabel,
     isAirplaySink: isAirplaySink,
+    airplayPeerForSink: airplayPeerForSink,
+    uniqueAirplaySinks: uniqueAirplaySinks,
     cleanAirplayLabel: cleanAirplayLabel,
     airplayRoomLabel: airplayRoomLabel,
     airplayDeviceDetail: airplayDeviceDetail,

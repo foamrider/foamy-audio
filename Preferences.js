@@ -1,14 +1,32 @@
 // Omarchy stores these fields on the foamy.audio bar entry in shell.json.
 var fields = [
   { key: "language", type: "enum", label: "Language", defaultValue: "system", options: ["system", "en", "nb"] },
-  { key: "showPercentage", type: "boolean", label: "Show bar percentage", defaultValue: true },
-  { key: "scrollVolumeStep", type: "enum", label: "Volume scroll step", defaultValue: "3", options: ["3", "5"] }
+  { key: "showPercentage", type: "boolean", label: "Show bar percentage", defaultValue: true }
 ]
 var norwegian = {
+  "Firewall rules":"Brannmurregler",
+  "Verify":"Kontroller",
+  "Apply":"Bruk",
+  "Checking…":"Kontrollerer…",
+  "Required ports are open.":"Nødvendige porter er åpne.",
+  "Rules are restricted. Apply to open the ports.":"Reglene er begrenset. Velg Bruk for å åpne portene.",
+  "Rules are missing. Apply to open the ports.":"Regler mangler. Velg Bruk for å åpne portene.",
+  "Rules conflict. Review UFW rules.":"Regler er i konflikt. Kontroller UFW-reglene.",
+  "Authorization cancelled or denied.":"Godkjenning avbrutt eller avslått.",
+
+  "Advanced":"Avansert",
+  "Read-only check. Requests administrator authorization.":"Kontrollerer uten å endre regler. Krever administratorgodkjenning.",
+  "Add an unrestricted UDP 6001–6002 rule. Requests administrator authorization.":"Legg til en ubegrenset regel for UDP 6001–6002. Krever administratorgodkjenning.",
+  "UFW is inactive.":"UFW er inaktiv.",
+  "Rules applied. Verify to check.":"Regler lagt til. Velg Kontroller for å sjekke.",
+  "Could not apply UFW rules.":"Kunne ikke legge til UFW-reglene.",
+  "Could not complete the UFW check.":"Kunne ikke fullføre UFW-kontrollen.",
+
   "Microphone level unavailable":"Mikrofonnivå er utilgjengelig",
+  "AirPlay group":"AirPlay-gruppe",
   "Audio":"Lyd", "Output":"Utgang", "Input":"Inngang", "Apps":"Apper", "Wireless":"Trådløst",
   "Settings":"Innstillinger", "Back":"Tilbake", "Language":"Språk", "System":"System",
-  "Show bar percentage":"Vis prosent i linjen", "Volume scroll step":"Volumtrinn ved rulling",
+  "Show bar percentage":"Vis prosent i linjen",
   "Saving…":"Lagrer…", "Invalid setting.":"Ugyldig innstilling.",
   "Could not save settings.":"Kunne ikke lagre innstillingene.",
   "Mute output":"Demp utgang", "Unmute output":"Slå på utgang", "Mute microphone":"Demp mikrofon",

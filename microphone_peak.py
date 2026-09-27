@@ -30,7 +30,7 @@ def peak_level(data: bytes) -> float:
     return min(1.0, math.cbrt(max((abs(value) for value in samples), default=0.0)))
 
 
-def monitor(target: str, layout: str) -> None:
+def monitor(target: str, layout: str, passive: bool = False) -> None:
     channels = channel_map(layout)
     stopped = False
 
@@ -40,9 +40,13 @@ def monitor(target: str, layout: str) -> None:
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
+    properties = "media.category=Monitor stream.monitor=true"
+    if passive:
+        # Do not wake an idle microphone and move network playback to its clock.
+        properties += " node.passive=true"
     command = ["pw-record", "--raw", "--format", "f32", "--rate", "16000",
                "--channels", str(len(channels)), "--channel-map", "[ " + " ".join(channels) + " ]",
-               "--target", target, "--properties", "media.category=Monitor stream.monitor=true", "-"]
+               "--target", target, "--properties", properties, "-"]
     # Match the source layout explicitly: unconstrained captures negotiate stereo
     # even for Pro Audio AUX microphones. This does not reconfigure the device.
     child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
@@ -57,6 +61,11 @@ def monitor(target: str, layout: str) -> None:
             if not selector.select(0.25):
                 if child.poll() is not None:
                     raise RuntimeError("microphone capture exited")
+                if passive:
+                    # An unused microphone produces no samples; clear the last level.
+                    pending = b""
+                    print("0.000000", flush=True)
+                    continue
                 if time.monotonic() - last_data > 5:
                     raise RuntimeError("microphone capture timed out")
                 continue
@@ -84,9 +93,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("target")
     parser.add_argument("channels")
+    parser.add_argument("--passive", action="store_true")
     args = parser.parse_args()
     try:
-        monitor(args.target, args.channels)
+        monitor(args.target, args.channels, args.passive)
     except (OSError, ValueError, RuntimeError) as error:
         print(f"Microphone level unavailable: {error}", file=sys.stderr)
         sys.exit(1)

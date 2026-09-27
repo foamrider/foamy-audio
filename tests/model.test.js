@@ -1,3 +1,4 @@
+const test = require("node:test")
 const assert = require("node:assert/strict")
 const Model = require("../Model.js")
 
@@ -101,3 +102,14 @@ assert.equal(Model.isAirplaySink({
 assert.equal(Model.cleanAirplayLabel("020000000003@Stua.local"), "Stua")
 
 console.log("audio model tests passed")
+
+test('AirPlay matching does not confuse an IP prefix with another receiver', () => {
+  const peers = [
+    {name:'Living room',hostname:'Living.local',address:'192.0.2.24',port:7000},
+    {name:'Kitchen',hostname:'Kitchen.local',address:'192.0.2.249',port:7000}
+  ]
+  const kitchen = {name:'raop_sink.Kitchen.local.192.0.2.249.7000'}
+  assert.equal(Model.airplayPeerForSink(kitchen, peers), peers[1])
+  assert.equal(Model.airplayPeerForSink({name:'raop_sink.Unknown.local.192.0.2.240.7000'}, peers), null)
+  assert.deepEqual(Model.uniqueAirplaySinks([kitchen, {...kitchen}, {name:'foamy_airplay_group_123'}],peers,kitchen), [kitchen])
+})

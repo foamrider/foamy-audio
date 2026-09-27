@@ -5,6 +5,7 @@ import Quickshell.Services.Pipewire
 Item {
   id: root
   property var source: null
+  property bool passive: false
   enabled: false
   readonly property var channels: source && source.audio ? source.audio.channels : []
   readonly property bool stereo: channels.length === 2
@@ -12,14 +13,15 @@ Item {
   readonly property string channelMap: {
     if (!source || !source.ready || !source.properties) return ""
     var raw = String(source.properties["audio.position"] || "").replace(/[\[\]"]/g, "").trim()
-    return raw ? raw.split(/[\s,]+/).join(",") : ""
+    return raw ? raw.split(/[\s,]+/).join(",") : stereo ? "FL,FR" : ""
   }
-  readonly property string requestedKey: enabled && source && channels.length > 0 && !stereo && channelMap
-    ? source.name + "|" + channelMap : ""
-  readonly property string error: failure || (enabled && channels.length > 0 && !stereo && !channelMap
+  readonly property bool useHelper: passive || !stereo
+  readonly property string requestedKey: enabled && source && channels.length > 0 && useHelper && channelMap
+    ? source.name + "|" + channelMap + "|" + passive : ""
+  readonly property string error: failure || (enabled && channels.length > 0 && useHelper && !channelMap
     ? "Microphone level unavailable" : "")
   readonly property real peak: !enabled || !source || !source.audio || source.audio.muted ? 0
-    : stereo ? nativeMeter.peak
+    : !useHelper ? nativeMeter.peak
     : Math.min(1, fallbackPeak / Math.max(0.0001, source.audio.volume))
   property real fallbackPeak: 0
   property string failure: ""
@@ -45,7 +47,9 @@ Item {
     if (!requestedKey || requestedKey === failedKey) return
     launchedKey = requestedKey
     stopping = false
-    capture.command = ["python3", decodeURIComponent(Qt.resolvedUrl("microphone_peak.py").toString().replace(/^file:\/\//, "")), source.name, channelMap]
+    var command = ["python3", decodeURIComponent(Qt.resolvedUrl("microphone_peak.py").toString().replace(/^file:\/\//, "")), source.name, channelMap]
+    if (passive) command.push("--passive")
+    capture.command = command
     capture.running = true
   }
 
@@ -53,7 +57,7 @@ Item {
   PwNodePeakMonitor {
     id: nativeMeter
     node: root.source
-    enabled: root.enabled && root.stereo
+    enabled: root.enabled && !root.useHelper
   }
   Process {
     id: capture

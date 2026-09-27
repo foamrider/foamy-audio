@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 from typing import Any, Callable, Sequence
 
 
@@ -126,6 +127,93 @@ def command_error(result: subprocess.CompletedProcess[str], fallback: str) -> st
     return detail.splitlines()[-1] if detail else fallback
 
 
+def checked(runner: CommandRunner, command: Sequence[str]) -> str:
+    result = runner(command)
+    if result.returncode:
+        raise RuntimeError(command_error(result, f"{command[0]} failed"))
+    return result.stdout.strip()
+
+
+def route_output(name: str, runner: CommandRunner) -> None:
+    checked(runner, ["pactl", "set-default-sink", name])
+    # WirePlumber applies default metadata asynchronously after pactl returns.
+    for _ in range(20):
+        if checked(runner, ["pactl", "get-default-sink"]) == name:
+            break
+        time.sleep(0.1)
+    else:
+        raise RuntimeError("The selected output did not become the default")
+    streams = json.loads(checked(runner, ["pactl", "-f", "json", "list", "sink-inputs"]))
+    for stream in streams:
+        app = stream.get("properties", {}).get("application.name")
+        # Processing and combine streams must stay on their physical targets.
+        if app and app != "EasyEffects":
+            checked(runner, ["pactl", "move-sink-input", str(stream["index"]), name])
+
+
+def remove_group(state: dict[str, Any], runner: CommandRunner) -> None:
+    module_id = state.get("groupModuleId")
+    if not isinstance(module_id, int):
+        return
+    modules = checked(runner, ["pactl", "list", "modules", "short"])
+    # IDs can be reused after a server restart; verify our unique sink name too.
+    for line in modules.splitlines():
+        fields = line.split("\t")
+        if (len(fields) >= 3 and fields[0] == str(module_id) and fields[1] == "module-combine-sink"
+                and f"sink_name={state.get('groupName')}" in fields[2].split()):
+            checked(runner, ["pactl", "unload-module", str(module_id)])
+
+
+def select_outputs(
+    names: list[str], *, local_name: str = "", runner: CommandRunner = run_command, path: Path | None = None,
+) -> tuple[dict[str, Any], int]:
+    path = path or state_path()
+    state = read_state(path)
+    names = list(dict.fromkeys(names))
+    if local_name and names:
+        return {"ok": False, "error": "Choose a local output or AirPlay speakers, not both."}, 1
+    sinks = json.loads(checked(runner, ["pactl", "-f", "json", "list", "sinks"]))
+    if local_name and not any(sink["name"] == local_name
+                              and not local_name.startswith(("raop_sink.", "foamy_airplay_group_")) for sink in sinks):
+        return {"ok": False, "error": "The local output is no longer available."}, 1
+    available = {sink["name"] for sink in sinks if sink["name"].startswith("raop_sink.")}
+    if any(name not in available for name in names):
+        return {"ok": False, "error": "An AirPlay speaker is no longer available. Reopen the panel."}, 1
+    target = names[0] if names else local_name or state.get("restoreName", "")
+    if not target:
+        return {"ok": False, "error": "No local output is available"}, 1
+    group: dict[str, Any] = {}
+    if len(names) > 1:
+        group_name = f"foamy_airplay_group_{os.getpid()}"
+        module_id = int(checked(runner, [
+            "pactl", "load-module", "module-combine-sink", f"sink_name={group_name}",
+            "sinks=" + ",".join(names), "latency_compensate=true",
+            'sink_properties=device.description="AirPlay group"',
+        ]))
+        group = {"groupModuleId": module_id, "groupName": group_name}
+        target = group_name
+    previous = checked(runner, ["pactl", "get-default-sink"])
+    try:
+        route_output(target, runner)
+    except (RuntimeError, OSError, subprocess.SubprocessError):
+        # Roll back before removing a new group so apps never target a dead sink.
+        try:
+            route_output(previous, runner)
+        finally:
+            remove_group(group, runner)
+        raise
+    remove_group(state, runner)
+    state.pop("groupModuleId", None)
+    state.pop("groupName", None)
+    state.update(group)
+    state["selectedNames"] = names
+    if local_name:
+        state["restoreName"] = local_name
+        state["restoreId"] = str(next(sink["index"] for sink in sinks if sink["name"] == local_name))
+    write_state(path, state)
+    return {"ok": True, "error": "", "selectedNames": names, "target": target}, 0
+
+
 def module_ids(runner: CommandRunner) -> tuple[list[int], str]:
     result = runner(["pactl", "list", "modules", "short"])
     if result.returncode != 0:
@@ -183,6 +271,9 @@ def start_discovery(
         "restoreName": str(restore_name or current_state.get("restoreName") or ""),
         "peers": peers,
     }
+    for key in ("groupModuleId", "groupName", "selectedNames"):
+        if key in current_state:
+            payload[key] = current_state[key]
     write_state(path, payload)
     return {"ok": True, "error": "", **payload}, 0
 
@@ -197,14 +288,13 @@ def stop_discovery(
 ) -> tuple[dict[str, Any], int]:
     path = path or state_path()
     current_state = read_state(path)
-    target_id = str(restore_id or current_state.get("restoreId") or "")
     target_name = str(restore_name or current_state.get("restoreName") or "")
     errors: list[str] = []
 
     if not skip_restore and target_name:
-        result = runner(["omarchy-audio-output-set-default", target_id, target_name])
-        if result.returncode != 0:
-            errors.append(command_error(result, f"Could not restore {target_name}"))
+        route_output(target_name, runner)
+
+    remove_group(current_state, runner)
 
     module_id = current_state.get("moduleId")
     if current_state.get("owned") is True and isinstance(module_id, int):
@@ -216,10 +306,12 @@ def stop_discovery(
             if result.returncode != 0:
                 errors.append(command_error(result, "Could not stop AirPlay discovery"))
 
-    try:
-        path.unlink(missing_ok=True)
-    except OSError as error:
-        errors.append(f"Could not clear AirPlay session state: {error}")
+    # Keep ownership information when teardown fails so a retry can clean up.
+    if not errors:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as error:
+            errors.append(f"Could not clear AirPlay session state: {error}")
 
     return {
         "ok": not errors,
@@ -261,6 +353,9 @@ def parse_args() -> argparse.Namespace:
     stop.add_argument("--skip-restore", action="store_true")
 
     subparsers.add_parser("status", help="Report a recoverable discovery session")
+    select = subparsers.add_parser("select", help="Route applications to selected AirPlay speakers")
+    select.add_argument("names", nargs="*")
+    select.add_argument("--local-name", default="", help="Select a local output while keeping discovery active")
     return parser.parse_args()
 
 
@@ -275,9 +370,11 @@ def main() -> int:
                 args.restore_name,
                 skip_restore=args.skip_restore,
             )
+        elif args.command == "select":
+            payload, return_code = select_outputs(args.names, local_name=args.local_name)
         else:
             payload, return_code = discovery_status()
-    except (OSError, subprocess.SubprocessError) as error:
+    except (OSError, subprocess.SubprocessError, RuntimeError, ValueError) as error:
         payload, return_code = {"ok": False, "error": f"AirPlay helper failed: {error}"}, 1
     emit(payload)
     return return_code

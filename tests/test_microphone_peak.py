@@ -7,6 +7,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'microphone_peak.py'
@@ -69,6 +70,42 @@ while True:
             self.assertNotEqual(proc.returncode, 0)
             self.assertIn('Microphone level unavailable', proc.stderr)
             self.assertEqual(proc.stdout, '')
+
+    def test_passive_meter_clears_level_while_idle_and_resumes_without_timeout(self):
+        with tempfile.TemporaryDirectory() as folder:
+            fake = Path(folder) / 'pw-record'
+            fake.write_text(f'''#!{sys.executable}
+import sys,struct,time
+assert 'node.passive=true' in sys.argv[sys.argv.index('--properties')+1]
+sys.stdout.buffer.write(struct.pack('<800f', *([0.125]*800)))
+sys.stdout.buffer.flush()
+time.sleep(6)
+while True:
+ sys.stdout.buffer.write(struct.pack('<800f', *([0.125]*800)));sys.stdout.buffer.flush();time.sleep(0.05)
+''')
+            fake.chmod(0o755)
+            proc = subprocess.Popen([sys.executable, str(SCRIPT), 'fixture', 'AUX0', '--passive'],
+                                    env={**os.environ, 'PATH': folder+':'+os.environ['PATH']},
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                deadline = time.monotonic()+9
+                levels = []
+                while time.monotonic() < deadline:
+                    self.assertTrue(select.select([proc.stdout], [], [], 2)[0])
+                    line = proc.stdout.readline()
+                    self.assertTrue(line, 'passive capture exited while the microphone was idle')
+                    levels.append(float(line))
+                    if len(levels) > 1 and levels[-1] == 0.5:
+                        break
+                self.assertEqual(levels[0], 0.5)
+                self.assertIn(0.0, levels)
+                self.assertEqual(levels[-1], 0.5)
+                proc.terminate()
+                self.assertEqual(proc.wait(timeout=3), 0)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.communicate()
 
 
 if __name__ == '__main__':

@@ -30,6 +30,80 @@ def completed(stdout="", stderr="", returncode=0):
 
 
 class AirPlayBridgeTest(unittest.TestCase):
+    def test_select_local_removes_group_but_keeps_discovery_and_peers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            state = {"moduleId": 50, "owned": True, "peers": [{"name": "Speaker"}],
+                     "groupModuleId": 51, "groupName": "foamy_airplay_group_1",
+                     "selectedNames": ["raop_sink.a", "raop_sink.b"],
+                     "restoreName": "alsa_output.old"}
+            path.write_text(json.dumps(state))
+            runner = FakeRunner([
+                completed(json.dumps([{"index": 62, "name": "alsa_output.local"}])),
+                completed("foamy_airplay_group_1"), completed(),
+                completed("alsa_output.local"), completed("[]"),
+                completed("50\tmodule-raop-discover\n51\tmodule-combine-sink\tsink_name=foamy_airplay_group_1\n"),
+                completed(),
+            ])
+            payload, code = BRIDGE.select_outputs([], local_name="alsa_output.local", runner=runner, path=path)
+            self.assertEqual(code, 0)
+            self.assertEqual(payload["selectedNames"], [])
+            saved = json.loads(path.read_text())
+            self.assertEqual(saved["moduleId"], 50)
+            self.assertTrue(saved["owned"])
+            self.assertEqual(saved["peers"], state["peers"])
+            self.assertEqual(saved["restoreName"], "alsa_output.local")
+            self.assertEqual(saved["restoreId"], "62")
+            self.assertNotIn("groupModuleId", saved)
+            self.assertNotIn("groupName", saved)
+            self.assertEqual([command for command in runner.commands if "unload-module" in command],
+                             [["pactl", "unload-module", "51"]])
+
+    def test_missing_local_output_preserves_session_and_routing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            original = json.dumps({"moduleId": 50, "selectedNames": ["raop_sink.a"]})
+            path.write_text(original)
+            runner = FakeRunner([completed("[]")])
+            payload, code = BRIDGE.select_outputs([], local_name="alsa_output.missing", runner=runner, path=path)
+            self.assertEqual(code, 1)
+            self.assertIn("no longer available", payload["error"])
+            self.assertEqual(len(runner.commands), 1)
+            self.assertEqual(path.read_text(), original)
+
+    def test_unavailable_selection_does_not_change_routing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runner = FakeRunner([completed("[]")])
+            payload, code = BRIDGE.select_outputs(
+                ["raop_sink.missing"], runner=runner, path=Path(directory) / "state.json")
+            self.assertEqual(code, 1)
+            self.assertFalse(payload["ok"])
+            self.assertEqual(len(runner.commands), 1)
+
+    def test_failed_default_verification_is_reported_before_moving_apps(self):
+        runner = FakeRunner([completed()] + [completed("some_other_sink")] * 20)
+        with self.assertRaisesRegex(RuntimeError, "did not become the default"):
+            BRIDGE.route_output("raop_sink.test", runner)
+        self.assertEqual(len(runner.commands), 21)
+
+    def test_default_verification_waits_for_wireplumber(self):
+        runner = FakeRunner([completed(), completed("previous"), completed("speaker"), completed("[]")])
+        BRIDGE.route_output("speaker", runner)
+        self.assertEqual(len(runner.commands), 4)
+
+    def test_route_preserves_processing_streams(self):
+        streams = [{"index": 1, "properties": {}},
+                   {"index": 2, "properties": {"application.name": "EasyEffects"}},
+                   {"index": 3, "properties": {"application.name": "Music"}}]
+        runner = FakeRunner([completed(), completed("speaker"), completed(json.dumps(streams)), completed()])
+        BRIDGE.route_output("speaker", runner)
+        self.assertEqual(runner.commands[3:], [["pactl", "move-sink-input", "3", "speaker"]])
+
+    def test_group_cleanup_never_unloads_reused_module_id(self):
+        runner = FakeRunner([completed("42\tmodule-combine-sink\tsink_name=someone_else\n")])
+        BRIDGE.remove_group({"groupModuleId": 42, "groupName": "foamy_airplay_group_1"}, runner)
+        self.assertEqual(len(runner.commands), 1)
+
     def test_module_listing_accepts_pulse_and_native_raop_names(self):
         output = """
 536870916\tmodule-raop-discover
@@ -113,6 +187,8 @@ not-an-id module-raop-discover
             }))
             runner = FakeRunner([
                 completed(),
+                completed("alsa_output.creative"),
+                completed("[]"),
                 completed("536870916\tmodule-raop-discover\n"),
                 completed(),
             ])
@@ -122,7 +198,9 @@ not-an-id module-raop-discover
             self.assertEqual(return_code, 0)
             self.assertTrue(payload["ok"])
             self.assertEqual(runner.commands, [
-                ["omarchy-audio-output-set-default", "62", "alsa_output.creative"],
+                ["pactl", "set-default-sink", "alsa_output.creative"],
+                ["pactl", "get-default-sink"],
+                ["pactl", "-f", "json", "list", "sink-inputs"],
                 ["pactl", "list", "modules", "short"],
                 ["pactl", "unload-module", "536870916"],
             ])

@@ -1,4 +1,6 @@
 import QtQuick
+import qs.Commons
+import qs.Ui
 // Control paths match Foamy's settings and back buttons.
 
 Image {
@@ -29,9 +31,18 @@ Image {
   sourceSize.height: Math.ceil(height * 2)
   fillMode: Image.PreserveAspectFit
   // Inline SVG keeps the original stroke geometry and follows the active theme.
-  source: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+  source: name === "cast-audio-variant" ? "" : "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="'
     + color.toString() + '" stroke-width="' + strokeWidth
     + '" stroke-linecap="round" stroke-linejoin="round">'
     + (paths[name] || paths.settings) + '</svg>')
+  OpticalGlyph {
+    anchors.fill: parent
+    visible: root.name === "cast-audio-variant"
+    // nf-md-cast_audio_variant (U+F1749).
+    text: "󱝉"
+    fontFamily: Style.font.family
+    fontSize: root.height
+    color: root.color
+  }
 }

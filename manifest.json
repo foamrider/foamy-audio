@@ -19,8 +19,7 @@
     "defaultSection": "right",
     "defaults": {
       "language": "system",
-      "showPercentage": true,
-      "scrollVolumeStep": "3"
+      "showPercentage": true
     },
     "schema": [
       {
@@ -39,16 +38,6 @@
         "type": "boolean",
         "label": "Show bar percentage",
         "defaultValue": true
-      },
-      {
-        "key": "scrollVolumeStep",
-        "type": "enum",
-        "label": "Volume scroll step",
-        "defaultValue": "3",
-        "options": [
-          "3",
-          "5"
-        ]
       }
     ]
   },
