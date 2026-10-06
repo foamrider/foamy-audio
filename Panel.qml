@@ -920,8 +920,8 @@ Panel {
             // Clip the wash to the same rounded top corners as the popup.
             var radius=cornerRadius
             ctx.beginPath();ctx.moveTo(radius,0);ctx.lineTo(width-radius,0)
-            ctx.quadraticCurveTo(width,0,width,radius);ctx.lineTo(width,height)
-            ctx.lineTo(0,height);ctx.lineTo(0,radius);ctx.quadraticCurveTo(0,0,radius,0)
+            ctx.arcTo(width,0,width,radius,radius);ctx.lineTo(width,height)
+            ctx.lineTo(0,height);ctx.lineTo(0,radius);ctx.arcTo(0,0,radius,0,radius)
             ctx.closePath();ctx.clip()
             var wash = ctx.createLinearGradient(0,0,width*0.5,height)
             wash.addColorStop(0,Qt.tint(Color.popups.background,Qt.alpha(Color.accent,0.08)))
