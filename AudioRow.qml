@@ -28,7 +28,7 @@ Rectangle {
   signal activated()
   signal muteRequested()
   implicitHeight: Style.space(narrow && volumeVisible ? 64 : 42)
-  radius: Style.space(8)
+  radius: Style.cornerRadius * 2
   color: selected ? Qt.alpha(Color.accent,0.11) : hover.hovered || rowFocused ? Qt.alpha(Color.accent,0.06) : "transparent"
   border.width: rowFocused ? 1 : 0
   border.color: Color.accent
@@ -72,13 +72,13 @@ Rectangle {
     Keys.forwardTo: [root]
     contentItem: Item {}
     background: Item {}
-    // Match the checkbox indicator in Omarchy's MultiSelect component.
+    // Keep the selection checkbox aligned with the popup controls.
     indicator: BorderSurface {
       x: (selectionBox.width-width)/2
       y: (selectionBox.height-height)/2
       width: Style.space(16)
       height: width
-      radius: Math.max(2, Style.cornerRadius/2)
+      radius: Style.cornerRadius * 2
       color: root.selected ? Style.selectedFillFor(Color.popups.text, Color.accent) : "transparent"
       borderSpec: Border.controlSpec(root.selected ? "selected" : "normal", Color.popups.text, Color.accent)
       Text {

@@ -8,7 +8,7 @@ Rectangle {
   signal toggled()
   implicitHeight: Style.space(30)
   color: "transparent"
-  radius: Style.space(5)
+  radius: Style.cornerRadius * 2
   activeFocusOnTab: true
   border.width: activeFocus ? 1 : 0
   border.color: Color.accent

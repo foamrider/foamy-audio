@@ -909,6 +909,8 @@ Panel {
         implicitHeight: heroContent.implicitHeight + Style.space(34)
         Canvas {
           id: headerWash
+          readonly property real cornerRadius: Math.max(0, Math.min(width / 2, height, panel.cornerRadius - Border.top(panel.borderSpec)))
+          onCornerRadiusChanged: requestPaint()
           anchors.fill: parent
           onWidthChanged: requestPaint()
           onHeightChanged: requestPaint()
@@ -916,7 +918,7 @@ Panel {
             var ctx = getContext("2d")
             ctx.reset()
             // Clip the wash to the same rounded top corners as the popup.
-            var radius=Style.space(13)
+            var radius=cornerRadius
             ctx.beginPath();ctx.moveTo(radius,0);ctx.lineTo(width-radius,0)
             ctx.quadraticCurveTo(width,0,width,radius);ctx.lineTo(width,height)
             ctx.lineTo(0,height);ctx.lineTo(0,radius);ctx.quadraticCurveTo(0,0,radius,0)

@@ -145,7 +145,7 @@ Item {
             implicitHeight: Style.space(36)
             color: "transparent"
             borderSpec: activeFocus ? Border.flat(Color.accent,1) : Border.none()
-            radius: Style.space(7)
+            radius: Style.cornerRadius * 2
             fontFamily: "sans-serif"
             titleSize: Style.space(13)
             label: root.tr(fieldRow.modelData.label)
@@ -175,7 +175,7 @@ Item {
               font.pixelSize:Style.space(12)
               padding:Style.space(7)
               Accessible.name:root.tr(fieldRow.modelData.label)
-              background: Rectangle { radius:Style.space(7); color:Qt.alpha(Color.popups.text,0.055); border.width:input.activeFocus?1:0; border.color:Color.accent }
+              background: Rectangle { radius:Style.cornerRadius * 2; color:Qt.alpha(Color.popups.text,0.055); border.width:input.activeFocus?1:0; border.color:Color.accent }
               onTextEdited:root.clearError()
               onEditingFinished: {
                 if (!visible) return
