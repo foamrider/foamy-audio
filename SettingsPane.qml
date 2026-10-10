@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls as Controls
 import QtQuick.Layouts
@@ -10,6 +11,8 @@ Item {
   id: root
   required property var settings
   required property string language
+  // Keep an in-flight firewall command alive if the settings view is closed.
+  readonly property bool busy: firewallProcess.running
   property bool saving: false
   property string error: ""
   property alias backTarget: backButton
@@ -121,6 +124,7 @@ Item {
         font.pixelSize: Style.space(12)
         Accessible.role: Accessible.AlertMessage
       }
+      // Instantiate only the control type required by each setting.
       Repeater {
         model: Preferences.fields
         Column {
@@ -130,61 +134,82 @@ Item {
           width: root.width-root.padding*2
           enabled: !root.saving
           opacity: enabled ? 1 : 0.55
-          AudioDropdown {
+          Loader {
             width: parent.width
-            visible: fieldRow.modelData.type==="enum"
-            label: root.tr(fieldRow.modelData.label)
-            fontFamily: "sans-serif"
-            value: String(fieldRow.current)
-            options: (fieldRow.modelData.options || []).map(function(v) { return {value:v,label:root.tr(Preferences.optionLabel(v))} })
-            onChanged: function(value) { root.save(fieldRow.modelData.key,value) }
-          }
-          Toggle {
-            width: parent.width
-            visible: fieldRow.modelData.type==="boolean"
-            implicitHeight: Style.space(36)
-            color: "transparent"
-            borderSpec: activeFocus ? Border.flat(Color.accent,1) : Border.none()
-            radius: Style.cornerRadius * 2
-            fontFamily: "sans-serif"
-            titleSize: Style.space(13)
-            label: root.tr(fieldRow.modelData.label)
-            checked: fieldRow.current===true
-            onClicked: root.save(fieldRow.modelData.key,!checked)
-          }
-          RowLayout {
-            width: parent.width
-            visible: fieldRow.modelData.type==="integer"
-            spacing: Style.space(12)
-            Text {
-              Layout.fillWidth:true
-              text:root.tr(fieldRow.modelData.label)
-              wrapMode:Text.WordWrap
-              color:Color.popups.text
-              font.family:"sans-serif"
-              font.pixelSize:Style.space(13)
-            }
-            Controls.TextField {
-              id: input
-              Layout.preferredWidth: Style.space(68)
-              implicitHeight: Style.space(34)
-              text: String(fieldRow.current)
-              selectByMouse:true
-              color:Color.popups.text
-              font.family:"sans-serif"
-              font.pixelSize:Style.space(12)
-              padding:Style.space(7)
-              Accessible.name:root.tr(fieldRow.modelData.label)
-              background: Rectangle { radius:Style.cornerRadius * 2; color:Qt.alpha(Color.popups.text,0.055); border.width:input.activeFocus?1:0; border.color:Color.accent }
-              onTextEdited:root.clearError()
-              onEditingFinished: {
-                if (!visible) return
-                var next=text.trim()===""?NaN:Number(text)
-                if (next!==fieldRow.current) root.save(fieldRow.modelData.key,next)
+            active: fieldRow.modelData.type==="enum"
+            visible: active
+            sourceComponent: Component {
+              AudioDropdown {
+                width: parent.width
+                visible: fieldRow.modelData.type==="enum"
+                label: root.tr(fieldRow.modelData.label)
+                fontFamily: "sans-serif"
+                value: String(fieldRow.current)
+                options: (fieldRow.modelData.options || []).map(function(v) { return {value:v,label:root.tr(Preferences.optionLabel(v))} })
+                onChanged: function(value) { root.save(fieldRow.modelData.key,value) }
               }
-              Keys.onEscapePressed: { text=String(fieldRow.current); root.back() }
-              HoverHandler { id:numberHover }
-              PanelToolTip { visible:numberHover.hovered||input.activeFocus; text:fieldRow.modelData.min+"–"+fieldRow.modelData.max; fontFamily:"sans-serif" }
+            }
+          }
+          Loader {
+            width: parent.width
+            active: fieldRow.modelData.type==="boolean"
+            visible: active
+            sourceComponent: Component {
+              Toggle {
+                width: parent.width
+                visible: fieldRow.modelData.type==="boolean"
+                implicitHeight: Style.space(36)
+                color: "transparent"
+                borderSpec: activeFocus ? Border.flat(Color.accent,1) : Border.none()
+                radius: Style.cornerRadius * 2
+                fontFamily: "sans-serif"
+                titleSize: Style.space(13)
+                label: root.tr(fieldRow.modelData.label)
+                checked: fieldRow.current===true
+                onClicked: root.save(fieldRow.modelData.key,!checked)
+              }
+            }
+          }
+          Loader {
+            width: parent.width
+            active: fieldRow.modelData.type==="integer"
+            visible: active
+            sourceComponent: Component {
+              RowLayout {
+                width: parent.width
+                visible: fieldRow.modelData.type==="integer"
+                spacing: Style.space(12)
+                Text {
+                  Layout.fillWidth:true
+                  text:root.tr(fieldRow.modelData.label)
+                  wrapMode:Text.WordWrap
+                  color:Color.popups.text
+                  font.family:"sans-serif"
+                  font.pixelSize:Style.space(13)
+                }
+                Controls.TextField {
+                  id: input
+                  Layout.preferredWidth: Style.space(68)
+                  implicitHeight: Style.space(34)
+                  text: String(fieldRow.current)
+                  selectByMouse:true
+                  color:Color.popups.text
+                  font.family:"sans-serif"
+                  font.pixelSize:Style.space(12)
+                  padding:Style.space(7)
+                  Accessible.name:root.tr(fieldRow.modelData.label)
+                  background: Rectangle { radius:Style.cornerRadius * 2; color:Qt.alpha(Color.popups.text,0.055); border.width:input.activeFocus?1:0; border.color:Color.accent }
+                  onTextEdited:root.clearError()
+                  onEditingFinished: {
+                    if (!visible) return
+                    var next=text.trim()===""?NaN:Number(text)
+                    if (next!==fieldRow.current) root.save(fieldRow.modelData.key,next)
+                  }
+                  Keys.onEscapePressed: { text=String(fieldRow.current); root.back() }
+                  HoverHandler { id:numberHover }
+                  PanelToolTip { visible:numberHover.hovered||input.activeFocus; text:fieldRow.modelData.min+"–"+fieldRow.modelData.max; fontFamily:"sans-serif" }
+                }
+              }
             }
           }
         }

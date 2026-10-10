@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls as Controls
 import Quickshell
@@ -12,6 +13,38 @@ import "Preferences.js" as Preferences
 
 Panel {
   id: root
+  readonly property SettingsPane settingsPane: settingsLoader.item
+  function open() { preparePopup(); controller.show() }
+
+  // Keep the window and shaders warm; release the heavier sections after the fade.
+  property bool popupContentActive: false
+  property bool settingsContentActive: false
+  property bool settingsBusy: false
+  Connections {
+    target: root.settingsPane
+    function onBusyChanged() { root.settingsBusy = root.settingsPane.busy }
+  }
+  function preparePopup() { popupUnload.stop(); popupContentActive = true }
+  Connections {
+    target: root
+    function onEditingSettingsChanged() {
+      if (root.editingSettings) root.settingsContentActive = true
+    }
+    function onOpenedChanged() {
+      if (root.opened) root.preparePopup()
+      else popupUnload.restart()
+    }
+  }
+  Timer {
+    id: popupUnload
+    interval: 1000
+    onTriggered: {
+      if (!root.opened && !panel.visible) {
+        root.popupContentActive = false
+        root.settingsContentActive = false
+      }
+    }
+  }
   moduleName: "foamy.audio"
   manageIpc: false
   ipcTarget: "foamy.audio"
@@ -289,7 +322,7 @@ Panel {
     displayAudioStreams = []
   }
 
-  function resetScroll() { panelScroll.contentY = 0; settingsPane.resetScroll() }
+  function resetScroll() { panelScroll.contentY = 0; if (settingsPane) settingsPane.resetScroll() }
   function keepFocusVisible(item) {
     if (!item || !opened) return
     // Fixed header/footer controls must never move the scrolling device list.
@@ -808,7 +841,7 @@ Panel {
     preferencesSave.command = Preferences.saveCommand(key, value)
     preferencesSave.running = true
   }
-  function openSettings() { open(); editingSettings = true; resetScroll(); Qt.callLater(function() { settingsPane.focusBack() }) }
+  function openSettings() { open(); editingSettings = true; resetScroll(); Qt.callLater(function() { if (root.opened && settingsPane) settingsPane.focusBack() }) }
   function closeSettings() { editingSettings = false; resetScroll(); Qt.callLater(function() { settingsButton.forceActiveFocus() }) }
   function volumeNodeFor(node) { return node && sink && node.id === sink.id ? volumeSink : node }
   function rowIcon(node) { return isAirplaySink(node) ? "cast-audio-variant" : isHeadphones(node) ? "headphones" : "speaker" }
@@ -866,10 +899,10 @@ Panel {
     open: root.opened
     padding: 0
     // Keep the initial focus on the panel so header actions retain their ghost appearance.
-    focusTarget: root.editingSettings ? settingsPane.backTarget : panelScroll
+    focusTarget: root.editingSettings ? (settingsPane ? settingsPane.backTarget : null) : panelScroll
     borderSpec: Border.flat(Qt.alpha(Color.popups.text, 0.15), 1)
     contentWidth: fittedContentWidth(Style.space(420))
-    contentHeight: fittedContentHeight(root.editingSettings ? settingsPane.implicitHeight : panelHeader.implicitHeight + panelColumn.implicitHeight + panelFooter.height, Style.space(740))
+    contentHeight: fittedContentHeight(root.editingSettings ? (settingsPane ? settingsPane.implicitHeight : 0) : panelHeader.implicitHeight + panelColumn.implicitHeight + panelFooter.height, Style.space(740))
     Item {
       id: panelContent
       anchors.fill: parent
@@ -890,17 +923,33 @@ Panel {
         target: panelScroll.Window.window
         function onActiveFocusItemChanged() { root.keepFocusVisible(target.activeFocusItem) }
       }
-      SettingsPane {
-        id: settingsPane
-        visible: root.editingSettings
+      Loader {
+        id: settingsLoader
+
         anchors.fill: parent
-        settings: root.settings
-        language: root.language
-        saving: preferencesSave.running
-        error: root.settingsError
-        onSave: function(key, value) { root.savePreference(key, value) }
-        onBack: root.closeSettings()
-        onClearError: root.settingsError = ""
+        active: root.settingsContentActive || root.settingsBusy
+        onLoaded: root.settingsBusy = item.busy
+        visible: root.editingSettings
+
+        sourceComponent: Component {
+          SettingsPane {
+            id: settingsPane
+
+            visible: root.editingSettings
+            anchors.fill: parent
+            settings: root.settings
+            language: root.language
+            saving: preferencesSave.running
+            error: root.settingsError
+            onSave: function(key, value) {
+              root.savePreference(key, value);
+            }
+            onBack: root.closeSettings()
+            onClearError: root.settingsError = ""
+          }
+
+        }
+
       }
       Item {
         id: panelHeader
@@ -996,7 +1045,7 @@ Panel {
             SectionHeader { width:parent.width;label:root.tr("Output");expanded:root.outputExpanded;onToggled:root.outputExpanded=!root.outputExpanded }
             Label { visible:root.outputExpanded&&!root.displayAudioSinks.length;width:parent.width;text:root.tr("No output devices");color:root.secondary }
             Repeater {
-              model: root.outputExpanded ? root.displayAudioSinks : []
+              model: root.popupContentActive && root.outputExpanded ? root.displayAudioSinks : []
               AudioRow {
                 required property var modelData
                 width: parent.width
@@ -1019,7 +1068,7 @@ Panel {
             Label { visible:root.inputExpanded&&!root.displayAudioSources.length;width:parent.width;text:root.tr("No input devices");color:root.secondary }
             Label { visible:root.inputExpanded&&inputPeakMonitor.error!=="";width:parent.width;text:root.tr(inputPeakMonitor.error);color:Color.urgent;wrapMode:Text.WordWrap }
             Repeater {
-              model: root.inputExpanded ? root.displayAudioSources : []
+              model: root.popupContentActive && root.inputExpanded ? root.displayAudioSources : []
               AudioRow {
                 required property var modelData
                 width: parent.width
@@ -1044,7 +1093,7 @@ Panel {
             SectionHeader { width:parent.width;label:root.tr("Apps");expanded:root.sourcesExpanded;onToggled:root.sourcesExpanded=!root.sourcesExpanded }
             Label { visible:root.sourcesExpanded&&!root.displayAudioStreams.length;width:parent.width;text:root.tr("No apps playing audio");color:root.secondary }
             Repeater {
-              model: root.sourcesExpanded ? root.displayAudioStreams : []
+              model: root.popupContentActive && root.sourcesExpanded ? root.displayAudioStreams : []
               AudioRow {
                 required property var modelData
                 width: parent.width
@@ -1072,7 +1121,7 @@ Panel {
               wrapMode: Text.WordWrap
             }
             Repeater {
-              model: root.wirelessExpanded ? root.displayWirelessAudioSinks : []
+              model: root.popupContentActive && root.wirelessExpanded ? root.displayWirelessAudioSinks : []
               AudioRow {
                 required property var modelData
                 width: parent.width
