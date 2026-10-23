@@ -19,7 +19,7 @@ Item {
   signal save(string key, var value)
   signal back()
   signal clearError()
-  function tr(label) { return Preferences.text(label,language) }
+  function tr(label) { return FoamyI18n.t(label) }
   function focusBack() { backButton.forceActiveFocus() }
   property string firewallState: ""
   property string firewallMessage: ""

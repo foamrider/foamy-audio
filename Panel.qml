@@ -819,12 +819,12 @@ Panel {
 
   readonly property color secondary: Qt.tint(Color.popups.background, Qt.alpha(Color.popups.text, 0.76))
   readonly property bool vertical: bar && (bar.position === "left" || bar.position === "right")
-  readonly property string language: Preferences.language(preference("language"), Qt.locale().name)
+  readonly property string language: FoamyI18n.language
   property bool editingSettings: false
   property string settingsError: ""
   property var pendingPreferences: ({})
   function preference(key) { return Preferences.value(settings, key) }
-  function tr(label) { return Preferences.text(label, language) }
+  function tr(label) { return FoamyI18n.t(label) }
   function savePreference(key, value) {
     if (!Preferences.valid(key, value)) { settingsError = tr("Invalid setting."); return }
     settingsError = ""

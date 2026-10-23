@@ -40,7 +40,7 @@ Remove the previous audio widget from the bar when replacing it.
 - Hover over a row to reveal its volume slider. Expand Apps for per-app volume.
 - Use the speaker and microphone icons to mute each channel. Right-click the
   bar widget to mute both. Scrolling never changes volume.
-- Open the cog to change language and bar percentage. Settings
+- Open the cog to change bar percentage. Settings
   are saved in Omarchy's `shell.json`.
 - Expand Wireless and use the checkboxes to select one or more AirPlay speakers.
   Select a speaker again
@@ -74,3 +74,7 @@ Licensed under [MIT](LICENSE). Omarchy and Lucide notices are in
 [LICENSE-OMARCHY](LICENSE-OMARCHY) and [LICENSE-LUCIDE](LICENSE-LUCIDE).
 
 Provided **as is**, without warranty or guaranteed support. Use at your own risk.
+
+Language follows **Omarchy → Setup → Language** on Omarchy 4.5. Plugin language overrides are no longer used. Omarchy 4.0 displays the plugin in English. Missing translations fall back to English.
+
+Translation checks: `python3 tests/i18n-runtime.py` uses the installed shell. Set `OMARCHY_PATH` to a 4.5 source tree to check live language switching against that version.
