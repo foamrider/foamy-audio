@@ -13,6 +13,8 @@ import "Preferences.js" as Preferences
 
 Panel {
   id: root
+  LayoutMirroring.enabled: FoamyI18n.rightToLeft
+  LayoutMirroring.childrenInherit: true
   readonly property SettingsPane settingsPane: settingsLoader.item
   function open() { preparePopup(); controller.show() }
 
@@ -819,14 +821,14 @@ Panel {
 
   readonly property color secondary: Qt.tint(Color.popups.background, Qt.alpha(Color.popups.text, 0.76))
   readonly property bool vertical: bar && (bar.position === "left" || bar.position === "right")
-  readonly property string language: Preferences.language(preference("language"), Qt.locale().name)
+  readonly property string language: FoamyI18n.language
   property bool editingSettings: false
   property string settingsError: ""
   property var pendingPreferences: ({})
   function preference(key) { return Preferences.value(settings, key) }
-  function tr(label) { return Preferences.text(label, language) }
+  function tr(label) { return FoamyI18n.t(label) }
   function savePreference(key, value) {
-    if (!Preferences.valid(key, value)) { settingsError = tr("Invalid setting."); return }
+    if (!Preferences.valid(key, value)) { settingsError = "Invalid setting."; return }
     settingsError = ""
     // Serialize updates and coalesce repeated edits to the same preference.
     pendingPreferences[key] = value
@@ -850,7 +852,7 @@ Panel {
     id: preferencesSave
     stdout: StdioCollector { id: preferenceOutput; waitForEnd: true }
     onExited: function(code) {
-      if (code !== 0 || preferenceOutput.text.trim() !== "ok") root.settingsError = root.tr("Could not save settings.")
+      if (code !== 0 || preferenceOutput.text.trim() !== "ok") root.settingsError = "Could not save settings."
       Qt.callLater(root.flushPreferences)
     }
   }

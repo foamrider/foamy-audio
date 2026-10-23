@@ -5,6 +5,7 @@ import qs.Ui
 
 Image {
   id: root
+  mirror: FoamyI18n.rightToLeft && (name === "arrow-left" || name === "chevron-right")
   property string name: "settings"
   readonly property var paths: ({
     "chevron-up": '<path d="m6 15 6-6 6 6"/>',

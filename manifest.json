@@ -18,21 +18,9 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "language": "system",
       "showPercentage": true
     },
     "schema": [
-      {
-        "key": "language",
-        "type": "enum",
-        "label": "Language",
-        "defaultValue": "system",
-        "options": [
-          "system",
-          "en",
-          "nb"
-        ]
-      },
       {
         "key": "showPercentage",
         "type": "boolean",

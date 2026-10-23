@@ -28,7 +28,12 @@ Slider {
     height: Style.space(root.mini ? 3 : 4)
     radius: height/2
     color: Qt.alpha(Color.popups.text,0.18)
-    Rectangle { width:root.visualPosition*parent.width; height:parent.height; radius:parent.radius; color:Color.accent }
+    Rectangle {
+      // Fill represents volume; visualPosition includes the mirrored handle position.
+      x: root.mirrored ? parent.width-width : 0
+      width: root.position*parent.width
+      height: parent.height; radius: parent.radius; color: Color.accent
+    }
   }
   handle: Rectangle {
     x: root.leftPadding+root.visualPosition*(root.availableWidth-width)
