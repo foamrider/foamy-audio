@@ -13,6 +13,8 @@ import "Preferences.js" as Preferences
 
 Panel {
   id: root
+  LayoutMirroring.enabled: FoamyI18n.rightToLeft
+  LayoutMirroring.childrenInherit: true
   readonly property SettingsPane settingsPane: settingsLoader.item
   function open() { preparePopup(); controller.show() }
 
@@ -826,7 +828,7 @@ Panel {
   function preference(key) { return Preferences.value(settings, key) }
   function tr(label) { return FoamyI18n.t(label) }
   function savePreference(key, value) {
-    if (!Preferences.valid(key, value)) { settingsError = tr("Invalid setting."); return }
+    if (!Preferences.valid(key, value)) { settingsError = "Invalid setting."; return }
     settingsError = ""
     // Serialize updates and coalesce repeated edits to the same preference.
     pendingPreferences[key] = value
@@ -850,7 +852,7 @@ Panel {
     id: preferencesSave
     stdout: StdioCollector { id: preferenceOutput; waitForEnd: true }
     onExited: function(code) {
-      if (code !== 0 || preferenceOutput.text.trim() !== "ok") root.settingsError = root.tr("Could not save settings.")
+      if (code !== 0 || preferenceOutput.text.trim() !== "ok") root.settingsError = "Could not save settings."
       Qt.callLater(root.flushPreferences)
     }
   }

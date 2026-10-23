@@ -5,6 +5,9 @@ import qs.Ui
 
 Rectangle {
   id: root
+  LayoutMirroring.enabled: FoamyI18n.rightToLeft
+  LayoutMirroring.childrenInherit: true
+  function visualX(left, itemWidth) { return FoamyI18n.rightToLeft ? width-left-itemWidth : left }
   required property var node
   property var volumeNode: node
   property string label: ""
@@ -41,8 +44,8 @@ Rectangle {
   }
   Keys.onPressed: function(event) {
     if (event.key===Qt.Key_Return || event.key===Qt.Key_Enter || event.key===Qt.Key_Space) { activated();event.accepted=true }
-    else if (event.key===Qt.Key_Left || event.key===Qt.Key_H) { adjust(-step);event.accepted=true }
-    else if (event.key===Qt.Key_Right || event.key===Qt.Key_L) { adjust(step);event.accepted=true }
+    else if (event.key===Qt.Key_Left || event.key===Qt.Key_H) { adjust(FoamyI18n.rightToLeft ? step : -step);event.accepted=true }
+    else if (event.key===Qt.Key_Right || event.key===Qt.Key_L) { adjust(FoamyI18n.rightToLeft ? -step : step);event.accepted=true }
     else if (event.key===Qt.Key_M && volumeVisible) { muteRequested();event.accepted=true }
   }
   HoverHandler { id:hover }
@@ -56,7 +59,7 @@ Rectangle {
   Controls.CheckBox {
     id: selectionBox
     visible: root.multiSelect
-    x: Style.space(6)
+    x: root.visualX(Style.space(6), width)
     y: root.contentCenterY-height/2
     width: Style.space(24)
     height: Style.space(30)
@@ -92,7 +95,7 @@ Rectangle {
       }
     }
   }
-  AudioIcon { id:icon; visible:appIcon.status!==Image.Ready;x:Style.space(10)+root.selectionInset;y:root.contentCenterY-height/2;width:Style.space(16);height:width;name:root.iconName;color:Color.popups.text }
+  AudioIcon { id:icon; visible:appIcon.status!==Image.Ready;x:root.visualX(Style.space(10)+root.selectionInset,width);y:root.contentCenterY-height/2;width:Style.space(16);height:width;name:root.iconName;color:Color.popups.text }
   Image {
     id: appIcon
     x: icon.x
@@ -109,9 +112,11 @@ Rectangle {
   }
   Text {
     id: nameLabel
-    x: Style.space(34)+root.selectionInset
+    readonly property real leftPosition: Style.space(34)+root.selectionInset
+    x: root.visualX(leftPosition, width)
+    horizontalAlignment: Text.AlignLeft
     y: root.contentCenterY-height/2
-    width: Math.max(0,root.width-x-(root.narrow || !root.volumeVisible ? Style.space(18) : deviceVolume.width+root.levelInset+Style.space(18))-(root.selected && !root.multiSelect ? Style.space(18):0))
+    width: Math.max(0,root.width-leftPosition-(root.narrow || !root.volumeVisible ? Style.space(18) : deviceVolume.width+root.levelInset+Style.space(18))-(root.selected && !root.multiSelect ? Style.space(18):0))
     text: root.label
     textFormat: Text.PlainText
     elide: Text.ElideRight
@@ -119,11 +124,11 @@ Rectangle {
     font.family: "sans-serif"
     font.pixelSize: Style.space(12)
   }
-  AudioIcon { visible:root.selected&&!root.multiSelect;x:nameLabel.x+Math.min(nameLabel.implicitWidth,nameLabel.width)+Style.space(5);y:root.contentCenterY-height/2;width:Style.space(12);height:width;name:"check";color:Color.accent }
+  AudioIcon { visible:root.selected&&!root.multiSelect;x:root.visualX(nameLabel.leftPosition+Math.min(nameLabel.implicitWidth,nameLabel.width)+Style.space(5),width);y:root.contentCenterY-height/2;width:Style.space(12);height:width;name:"check";color:Color.accent }
   Rectangle {
     id: levelMeter
     visible: root.levelVisible
-    x: root.width-width-Style.space(10)
+    x: root.visualX(root.width-width-Style.space(10), width)
     anchors.verticalCenter: parent.verticalCenter
     width: Style.space(3)
     height: Style.space(20)
@@ -144,9 +149,10 @@ Rectangle {
     id: deviceVolume
     visible: root.volumeVisible
     enabled: visible
-    x: root.narrow ? nameLabel.x : root.width-width-Style.space(10)-root.levelInset
+    readonly property real leftPosition: root.narrow ? nameLabel.leftPosition : root.width-width-Style.space(10)-root.levelInset
+    x: root.visualX(leftPosition, width)
     y: root.narrow ? Style.space(33) : (root.height-height)/2
-    width: root.narrow ? root.width-x-Style.space(10)-root.levelInset : implicitWidth
+    width: root.narrow ? root.width-leftPosition-Style.space(10)-root.levelInset : implicitWidth
     node: root.volumeNode
     label: root.label
     revealed: hover.hovered || root.rowFocused

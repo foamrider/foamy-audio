@@ -9,6 +9,8 @@ import "Preferences.js" as Preferences
 
 Item {
   id: root
+  LayoutMirroring.enabled: FoamyI18n.rightToLeft
+  LayoutMirroring.childrenInherit: true
   required property var settings
   required property string language
   // Keep an in-flight firewall command alive if the settings view is closed.
@@ -89,7 +91,7 @@ Item {
       anchors.centerIn: parent
       width: root.width-root.padding*2
       AudioAction { id:backButton; iconName:"arrow-left"; foreground:root.secondary; tooltipText:root.tr("Back"); onClicked:root.back() }
-      Text { text:root.tr("Settings"); color:root.secondary; font.family:"sans-serif"; font.pixelSize:Style.space(13); Layout.fillWidth:true }
+      Text { horizontalAlignment:Text.AlignLeft; text:root.tr("Settings"); color:root.secondary; font.family:"sans-serif"; font.pixelSize:Style.space(13); Layout.fillWidth:true }
       Text { visible:root.saving; text:root.tr("Saving…"); color:root.secondary; font.family:"sans-serif"; font.pixelSize:Style.space(11) }
     }
   }
@@ -115,8 +117,9 @@ Item {
       spacing: Style.space(14)
       Text {
         width: root.width-root.padding*2
+        objectName: "settingsErrorText"
         visible: root.error!==""
-        text: root.error
+        text: root.tr(root.error)
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         color: Color.urgent
@@ -218,6 +221,8 @@ Item {
         width: root.width-root.padding*2
         spacing: Style.space(10)
         Text {
+          width: parent.width
+          horizontalAlignment: Text.AlignLeft
           text: root.tr("Advanced")
           color: root.secondary
           font.family: "sans-serif"
@@ -229,6 +234,7 @@ Item {
           Text {
             Layout.fillWidth: true
             Layout.minimumWidth: 0
+            horizontalAlignment: Text.AlignLeft
             text: root.tr("Firewall rules")
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
