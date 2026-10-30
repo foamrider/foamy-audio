@@ -174,13 +174,17 @@ def inspect_status(output: str, peers: Sequence[dict[str, str]] = ()) -> dict[st
     legacy = any(rule["owned"] and rule["network"] is None for rule in rules)
     owned = any(rule["owned"] and rule["network"] is not None for rule in rules)
     state, message = "missing", "No rule lets the speakers reach UDP 6001–6002."
+    # An ALLOW from anywhere exposes the ports on every network the computer
+    # joins, whatever scoped rules sit next to it, so it is always reported.
+    wide_exposure = any(rule["action"] == "ALLOW" and rule["network"] is None and rule["plainDestination"]
+                        for rule in rules)
     if not peers:
         if any(rule["action"] != "ALLOW" for rule in rules):
             state, message = "conflict", "A blocking UFW rule may affect AirPlay."
+        elif wide_exposure:
+            state, message = "wide", "UDP 6001–6002 is open to every network."
         elif owned:
             state, message = "present", "A Foamy Audio rule exists. Find speakers to check it."
-        elif any(rule["network"] is None and rule["plainDestination"] and not rule["interface"] for rule in rules):
-            state, message = "wide", "UDP 6001–6002 is open to every network."
     else:
         scoped_ok = wide_ok = True
         blocked = False
@@ -197,10 +201,10 @@ def inspect_status(output: str, peers: Sequence[dict[str, str]] = ()) -> dict[st
             wide_ok = wide_ok and set(PORTS) <= scoped | wide
         if blocked:
             state, message = "conflict", "A blocking UFW rule may affect AirPlay."
+        elif wide_ok and wide_exposure:
+            state, message = "wide", "UDP 6001–6002 is open to every network."
         elif scoped_ok:
             state, message = "open", "The speakers can reach UDP 6001–6002."
-        elif wide_ok:
-            state, message = "wide", "UDP 6001–6002 is open to every network."
     return {"state": state, "message": message, "details": output.strip(), "legacy": legacy}
 
 

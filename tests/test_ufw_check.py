@@ -136,6 +136,20 @@ class InspectTest(unittest.TestCase):
         self.assertTrue(result['legacy'])
         self.assertEqual(CHECK.inspect_status(text)['state'], 'wide')
 
+    def test_wide_rule_is_reported_even_next_to_a_scoped_rule(self):
+        # An upgrade that applied the scoped rule but kept the 1.0 rule is still open everywhere.
+        text = status('6001:6002/udp on wlan0      ALLOW IN    192.0.2.0/24               # Foamy Audio AirPlay',
+                      '6001:6002/udp              ALLOW IN    Anywhere                   # Foamy Audio AirPlay',
+                      '6001:6002/udp (v6)         ALLOW IN    Anywhere (v6)              # Foamy Audio AirPlay')
+        result = CHECK.inspect_status(text, [SPEAKER])
+        self.assertEqual(result['state'], 'wide')
+        self.assertTrue(result['legacy'])
+        self.assertEqual(CHECK.inspect_status(text)['state'], 'wide')
+        # A wide rule for another interface still exposes the ports there.
+        text = status('6001:6002/udp on wlan0      ALLOW IN    192.0.2.0/24',
+                      '6001:6002/udp on eth0       ALLOW IN    Anywhere')
+        self.assertEqual(CHECK.inspect_status(text, [SPEAKER])['state'], 'wide')
+
     def test_rules_for_another_network_or_interface_do_not_cover(self):
         for rule in ('6001:6002/udp on eth0       ALLOW IN    192.0.2.0/24',
                      '6001:6002/udp              ALLOW IN    198.51.100.0/24',
