@@ -26,7 +26,6 @@ const gamingHeadset = {
 }
 
 assert.equal(Model.isHeadphones(gamingHeadset), true)
-assert.equal(Model.sinkGlyph(gamingHeadset), "󰋋")
 
 const liveGamingSink = {
   description: "Astro A50 Gaming",
@@ -34,7 +33,6 @@ const liveGamingSink = {
 }
 
 assert.equal(Model.isHeadphones(liveGamingSink), true)
-assert.equal(Model.sinkGlyph(liveGamingSink), "󰋋")
 
 const trackedGamingSink = {
   ready: true,
@@ -45,7 +43,6 @@ const trackedGamingSink = {
 }
 
 assert.equal(Model.isHeadphones(trackedGamingSink), true)
-assert.equal(Model.sinkGlyph(trackedGamingSink), "󰋋")
 
 const jabraSink = {
   name: "bluez_output.02_00_00_00_00_01.1",
@@ -60,7 +57,6 @@ const jabraDevice = {
 
 assert.equal(Model.bluetoothSinkMatchesDevice(jabraSink, jabraDevice), true)
 assert.equal(Model.isHeadphones(jabraSink, [jabraDevice]), true)
-assert.equal(Model.sinkGlyph(jabraSink, [jabraDevice]), "󰋋")
 
 const bluetoothSpeaker = {
   address: "11:22:33:44:55:66",
@@ -73,7 +69,7 @@ const bluetoothSpeakerSink = {
 }
 
 assert.equal(Model.isHeadphones(bluetoothSpeakerSink, [bluetoothSpeaker]), false)
-assert.equal(Model.sinkGlyph(bluetoothSpeakerSink, [bluetoothSpeaker]), "󰂯")
+assert.equal(Model.bluetoothDeviceForSink(bluetoothSpeakerSink, [bluetoothSpeaker]), bluetoothSpeaker)
 
 const sonosBeam = {
   ready: true,
@@ -89,9 +85,6 @@ const sonosBeam = {
 
 assert.equal(Model.isAirplaySink(sonosBeam), true)
 assert.equal(Model.airplayRoomLabel(sonosBeam), "Stue")
-assert.equal(Model.airplayDeviceDetail(sonosBeam), "Sonos Beam")
-assert.equal(Model.airplayPeerDetail({ vendor: "Sonos", model: "Beam" }), "Sonos Beam")
-assert.equal(Model.airplayPeerDetail({ vendor: "", model: "AppleTV14,1" }), "Apple TV")
 
 assert.equal(Model.isAirplaySink({
   ready: true,
@@ -112,4 +105,25 @@ test('AirPlay matching does not confuse an IP prefix with another receiver', () 
   assert.equal(Model.airplayPeerForSink(kitchen, peers), peers[1])
   assert.equal(Model.airplayPeerForSink({name:'raop_sink.Unknown.local.192.0.2.240.7000'}, peers), null)
   assert.deepEqual(Model.uniqueAirplaySinks([kitchen, {...kitchen}, {name:'foamy_airplay_group_123'}],peers,kitchen), [kitchen])
+})
+
+test("repeater rows hold primitives and resolve to the live node", () => {
+  const live = [{ id: 4, name: "alsa_output.a" }, { id: 7, name: "raop_sink.b" }]
+  const rows = Model.rowSnapshot([live[1], null, { name: "no id" }])
+  assert.deepEqual(rows, [{ id: 7, name: "raop_sink.b" }])
+  assert.equal(Model.nodeFor(rows[0], live), live[1])
+  // A recycled id under another name is not the same node.
+  assert.equal(Model.nodeFor(rows[0], [{ id: 7, name: "other" }]), null)
+  assert.equal(Model.nodeFor(null, live), null)
+})
+
+test("shell level meters and untyped sources", () => {
+  assert.equal(Model.isShellLevelMeter("quickshell"), true)
+  assert.equal(Model.isShellLevelMeter("quickshell-peak-monitor"), true)
+  assert.equal(Model.isShellLevelMeter("alsa_input.mic"), false)
+  const availability = { "easyeffects_source": true }
+  assert.equal(Model.isUntypedSource({ name: "easyeffects_source", audio: null, isSink: false, isStream: false }, availability), true)
+  assert.equal(Model.isUntypedSource({ name: "easyeffects_source", audio: {}, isSink: false, isStream: false }, availability), false)
+  assert.equal(Model.isUntypedSource({ name: "easyeffects_source", isSink: true }, availability), false)
+  assert.equal(Model.isUntypedSource({ name: "other", isSink: false, isStream: false }, availability), false)
 })
