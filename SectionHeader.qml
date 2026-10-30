@@ -1,28 +1,39 @@
 import QtQuick
-import qs.Commons
+import QtQuick.Layouts
+import "kit"
 
-Rectangle {
+// A collapsible section title (Output, Input, Apps, Wireless): one stop of
+// the panel cursor; Enter, a click or the section's letter key toggles it.
+FoamyCursorSurface {
   id: root
   property string label: ""
   property bool expanded: true
   signal toggled()
-  implicitHeight: Style.space(30)
-  color: "transparent"
-  radius: Style.cornerRadius * 2
-  activeFocusOnTab: true
-  border.width: activeFocus ? 1 : 0
-  border.color: Color.accent
+  implicitHeight: FoamyStyle.controlHeight
   Accessible.role: Accessible.Button
   Accessible.name: label
   Accessible.onPressAction: toggled()
-  Keys.onReturnPressed: toggled()
-  Keys.onEnterPressed: toggled()
-  Keys.onSpacePressed: toggled()
-  Text {
-    anchors.left:parent.left;anchors.leftMargin:Style.space(1);anchors.verticalCenter:parent.verticalCenter
-    text:root.label.toUpperCase();textFormat:Text.PlainText;color:Qt.tint(Color.popups.background,Qt.alpha(Color.popups.text,0.76))
-    font.family:"sans-serif";font.pixelSize:Style.space(11);font.letterSpacing:0.8
+  onClicked: toggled()
+  RowLayout {
+    anchors.fill: parent
+    anchors.leftMargin: FoamyStyle.rowPadding
+    anchors.rightMargin: FoamyStyle.rowPadding
+    Text {
+      Layout.fillWidth: true
+      text: root.label
+      textFormat: Text.PlainText
+      horizontalAlignment: Text.AlignLeft
+      elide: Text.ElideRight
+      color: FoamyPalette.secondaryText
+      font.family: FoamyStyle.fontFamily
+      font.pixelSize: FoamyStyle.font.bodySmall
+      font.weight: Font.DemiBold
+    }
+    FoamyIcon {
+      Layout.preferredWidth: FoamyStyle.iconSize
+      Layout.preferredHeight: FoamyStyle.iconSize
+      name: root.expanded ? "chevron-up" : "chevron-down"
+      color: FoamyPalette.secondaryText
+    }
   }
-  AudioIcon { anchors.right:parent.right;anchors.rightMargin:Style.space(2);anchors.verticalCenter:parent.verticalCenter;width:Style.space(14);height:width;name:root.expanded?"chevron-up":"chevron-down";color:Color.popups.text }
-  MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:{root.forceActiveFocus();root.toggled()}}
 }

@@ -1,26 +1,28 @@
 import QtQuick
-import qs.Commons
+import qs.Commons as Commons
+import "kit"
 
+// A row's inline volume: slider plus percentage. Values come in and go out
+// through the panel API so untyped (wpctl) inputs work like typed nodes.
 Item {
   id: root
-  required property var node
+  property bool available: false
+  property real volume: 0
+  property bool muted: false
   property bool revealed: false
   property string label: ""
   property real maximum: 1
-  property real step: 0.03
-  property color secondary: Color.popups.text
-  readonly property bool available: !!(node && node.audio)
-  readonly property bool focused: slider.activeFocus
+  property real step: 0.01
   readonly property bool dragging: slider.pressed
-  signal muteRequested()
-  implicitWidth: Style.space(114)
-  implicitHeight: Style.space(26)
-  opacity: !available || node.audio.muted ? 0.5 : 1
+  signal moved(real value)
+  implicitWidth: Commons.Style.space(114)
+  implicitHeight: Commons.Style.space(26)
+  opacity: !available || muted ? 0.5 : 1
   AudioSlider {
     id: slider
     anchors.left: parent.left
     anchors.right: percent.left
-    anchors.rightMargin: Style.space(7)
+    anchors.rightMargin: FoamyStyle.gap
     anchors.verticalCenter: parent.verticalCenter
     mini: true
     revealed: root.revealed
@@ -28,20 +30,19 @@ Item {
     label: root.label
     to: root.maximum
     stepSize: root.step
-    value: root.available ? root.node.audio.volume : 0
-    onMoved: if (root.available) root.node.audio.volume = value
-    onMuteRequested: root.muteRequested()
+    value: root.available ? root.volume : 0
+    onMoved: if (root.available) root.moved(value)
   }
   Text {
     id: percent
     anchors.right: parent.right
     anchors.verticalCenter: parent.verticalCenter
-    width: Style.space(34)
-    text: root.available ? Math.round(slider.value*100)+"%" : "—"
+    width: Commons.Style.space(34)
+    text: root.available ? FoamyI18n.t("%1%", Math.round(slider.value * 100)) : "—"
     textFormat: Text.PlainText
-    color: root.secondary
-    font.family: "sans-serif"
-    font.pixelSize: Style.space(11)
+    color: FoamyPalette.secondaryText
+    font.family: FoamyStyle.fontFamily
+    font.pixelSize: FoamyStyle.font.bodySmall
     horizontalAlignment: Text.AlignRight
   }
 }

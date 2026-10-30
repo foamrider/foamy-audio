@@ -1,12 +1,8 @@
-singleton FoamyI18n 1.0 FoamyI18n.qml
-AudioAction 1.0 AudioAction.qml
-AudioDropdown 1.0 AudioDropdown.qml
-AudioIcon 1.0 AudioIcon.qml
-AudioPopup 1.0 AudioPopup.qml
+singleton AudioService 1.0 AudioService.qml
 AudioRow 1.0 AudioRow.qml
 AudioSlider 1.0 AudioSlider.qml
+AudioView 1.0 AudioView.qml
 DeviceVolume 1.0 DeviceVolume.qml
 MicrophonePeak 1.0 MicrophonePeak.qml
 Panel 1.0 Panel.qml
 SectionHeader 1.0 SectionHeader.qml
-SettingsPane 1.0 SettingsPane.qml
