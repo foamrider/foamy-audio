@@ -292,17 +292,18 @@ Panel {
   Component.onDestruction: if (member.members <= 1) AudioService.teardown()
 
   // ---- Bar button --------------------------------------------------------
+  // Nerd Font code points as escapes: private-use glyphs are easy to lose in an edit.
   function barGlyph() {
-    if (airplayActive) return "󱝉" // nf-md-cast_audio_variant (U+F1749).
+    if (airplayActive) return "\u{F1749}"                 // nf-md-cast_audio_variant
     // The Waybar pulseaudio glyph set; the Material speaker icons render smaller.
-    if (!sink || !sink.audio) return ""
-    if (outputMuted) return ""
-    if (Model.isHeadphones(sink, AudioService.bluetoothDevices)) return "󰋋"
-    if (outputVolume >= 0.67) return ""
-    if (outputVolume >= 0.34) return ""
-    if (outputVolume > 0) return ""
-    return ""
+    if (!sink || !sink.audio || outputMuted) return "\ueee8" // muted / no output
+    if (Model.isHeadphones(sink, AudioService.bluetoothDevices)) return "\u{F02CB}" // nf-md-headphones
+    if (outputVolume >= 0.67) return "\uf028"              // nf-fa-volume_up
+    if (outputVolume >= 0.34) return "\uf027"              // nf-fa-volume_down
+    if (outputVolume > 0) return "\uf026"                  // nf-fa-volume_off
+    return "\ueee8"
   }
+
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight

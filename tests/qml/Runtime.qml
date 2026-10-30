@@ -70,6 +70,8 @@ ShellRoot {
     check(Audio.AudioService.isShellLevelMeter({ name: "quickshell-peak-monitor" }), "shell level meter filtered")
     eq(Audio.AudioService.platformHides({ name: "alsa_output.speakers" }), false, "no platform hints here")
     var first = panels.itemAt(0)
+    // No PipeWire offscreen: the bar shows the no-output glyph, never an empty button.
+    eq(first.barGlyph(), "\ueee8", "bar glyph without an output")
     eq(first.popup.bodyItem, null, "popup body is lazy")
     eq(Audio.AudioService.demanded, false, "no demand while closed")
     first.open()
