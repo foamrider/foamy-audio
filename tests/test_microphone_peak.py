@@ -31,6 +31,27 @@ class PeakTest(unittest.TestCase):
         self.assertEqual(PEAK.peak_level(struct.pack('<f', 8)), 1)
         with self.assertRaises(ValueError):
             PEAK.peak_level(struct.pack('<f', float('nan')))
+        # NaN or Inf anywhere in the block is rejected, not skipped by max().
+        for bad in (float('nan'), float('inf'), float('-inf')):
+            with self.assertRaises(ValueError):
+                PEAK.peak_level(struct.pack('<3f', 0.1, bad, 0.2))
+        self.assertEqual(PEAK.peak_level(b''), 0)
+
+    def test_peak_matches_reference_for_wide_layouts(self):
+        import math
+        import random
+        rng = random.Random(7)
+        for channels in (1, 2, 8, 64):
+            values = [rng.uniform(-1, 1) for _ in range(PEAK.sample_rate(channels) // 20 * channels)]
+            data = struct.pack('<%df' % len(values), *values)
+            expected = min(1.0, math.cbrt(max(abs(v) for v in struct.unpack('<%df' % len(values), data))))
+            self.assertAlmostEqual(PEAK.peak_level(data), expected, places=12)
+
+    def test_wide_devices_capture_at_a_lower_rate(self):
+        self.assertEqual(PEAK.sample_rate(2), 16000)
+        self.assertEqual(PEAK.sample_rate(8), 16000)
+        self.assertEqual(PEAK.sample_rate(9), 8000)
+        self.assertEqual(PEAK.sample_rate(64), 8000)
 
     def test_capture_uses_map_and_reaps_child_on_close(self):
         with tempfile.TemporaryDirectory() as folder:

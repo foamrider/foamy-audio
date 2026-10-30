@@ -2,12 +2,12 @@
 """Emit microphone levels only; audio samples stay in memory and are never saved."""
 
 import argparse
+from array import array
 import math
 import os
 import re
 import selectors
 import signal
-import struct
 import subprocess
 import sys
 import time
@@ -24,10 +24,21 @@ def channel_map(value: str) -> list[str]:
 
 
 def peak_level(data: bytes) -> float:
-    samples = [sample[0] for sample in struct.iter_unpack("<f", data)]
-    if any(not math.isfinite(value) for value in samples):
+    # array() decodes the float32 block in C; a 64-channel AUX device stays cheap.
+    samples = array("f", data)
+    if sys.byteorder != "little":
+        samples.byteswap()
+    if not samples:
+        return 0.0
+    # A float32 block cannot overflow a double sum, so only NaN or Inf makes it non-finite.
+    if not math.isfinite(sum(samples)):
         raise ValueError("invalid microphone sample")
-    return min(1.0, math.cbrt(max((abs(value) for value in samples), default=0.0)))
+    return min(1.0, math.cbrt(max(max(samples), -min(samples))))
+
+
+def sample_rate(channel_count: int) -> int:
+    # A level meter needs no more than 8 kHz; wide AUX devices halve the work per second.
+    return 16000 if channel_count <= 8 else 8000
 
 
 def monitor(target: str, layout: str, passive: bool = False) -> None:
@@ -44,7 +55,8 @@ def monitor(target: str, layout: str, passive: bool = False) -> None:
     if passive:
         # Do not wake an idle microphone and move network playback to its clock.
         properties += " node.passive=true"
-    command = ["pw-record", "--raw", "--format", "f32", "--rate", "16000",
+    rate = sample_rate(len(channels))
+    command = ["pw-record", "--raw", "--format", "f32", "--rate", str(rate),
                "--channels", str(len(channels)), "--channel-map", "[ " + " ".join(channels) + " ]",
                "--target", target, "--properties", properties, "-"]
     # Match the source layout explicitly: unconstrained captures negotiate stereo
@@ -54,7 +66,8 @@ def monitor(target: str, layout: str, passive: bool = False) -> None:
     selector = selectors.DefaultSelector()
     selector.register(child.stdout, selectors.EVENT_READ)
     pending = b""
-    block_size = 800 * len(channels) * 4
+    # 20 level updates per second whatever the rate.
+    block_size = rate // 20 * len(channels) * 4
     last_data = time.monotonic()
     try:
         while not stopped:
