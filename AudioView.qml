@@ -209,26 +209,33 @@ PanelKeyCatcher {
       anchors.leftMargin: FoamyStyle.gap
       anchors.rightMargin: FoamyStyle.gap
       spacing: FoamyStyle.gapLarge
-      Row {
+      Item {
         Layout.alignment: Qt.AlignVCenter
-        spacing: FoamyStyle.gapTiny
+        implicitWidth: heroNumber.implicitWidth + (heroUnit.visible ? FoamyStyle.gapTiny + heroUnit.implicitWidth : 0)
+        implicitHeight: heroNumber.implicitHeight
         opacity: view.audio.outputMuted ? 0.5 : 1
         Text {
+          id: heroNumber
+          anchors.left: parent.left
           text: view.audio.hasOutput ? FoamyI18n.number(Math.round(outputSlider.value * 100)) : "—"
           textFormat: Text.PlainText
           color: FoamyPalette.text
           font.family: FoamyStyle.fontFamily
-          font.pixelSize: FoamyStyle.font.displayLarge
+          font.pixelSize: FoamyStyle.font.numeral
           font.weight: Font.DemiBold
+          font.letterSpacing: -2
         }
         Text {
+          id: heroUnit
           visible: view.audio.hasOutput
-          anchors.baseline: parent.children[0].baseline
+          anchors.left: heroNumber.right
+          anchors.leftMargin: FoamyStyle.gapTiny
+          anchors.baseline: heroNumber.baseline
           text: "%"
           textFormat: Text.PlainText
           color: FoamyPalette.secondaryText
           font.family: FoamyStyle.fontFamily
-          font.pixelSize: FoamyStyle.font.subtitle
+          font.pixelSize: FoamyStyle.font.display
         }
       }
       AudioSlider {
