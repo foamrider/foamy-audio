@@ -129,6 +129,16 @@ not-an-id module-raop-discover
             "model": "Beam",
         }])
 
+    def test_malformed_avahi_record_is_skipped_not_fatal(self):
+        output = r'''
+=;eth0;IPv4;Kitchen;AirTunes Remote Audio;local;kitchen.local;192.0.2.20;notaport;"am=One"
+=;eth0;IPv4;Hall;AirTunes Remote Audio;local;hall.local;192.0.2.21;99999;"am=One"
+=;eth0;IPv4;Stue;AirTunes Remote Audio;local;stue.local;192.0.2.17;7000;"am=Beam"
+'''
+        receivers = BRIDGE.parse_avahi_receivers(output)
+        self.assertEqual([receiver["name"] for receiver in receivers], ["Stue"])
+        self.assertEqual(receivers[0]["port"], 7000)
+
     def test_start_loads_one_owned_module_and_remembers_local_output(self):
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "state.json"
