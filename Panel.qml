@@ -6,7 +6,6 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 import "kit"
-import "kit/FoamyPrefs.js" as Prefs
 import "Model.js" as Model
 import "Preferences.js" as Schema
 
@@ -23,7 +22,7 @@ Panel {
   FoamyMember { id: member; scope: "audio"; demanding: root.opened }
 
   readonly property bool vertical: bar && (bar.position === "left" || bar.position === "right")
-  readonly property bool showPercentage: Prefs.value(Schema.fields, settings, "showPercentage")
+  readonly property bool showPercentage: prefs.value("showPercentage")
   readonly property real volumeStep: 0.05
 
   // ---- Levels (from the service) -----------------------------------------
@@ -96,7 +95,6 @@ Panel {
       refreshRows()
     } else {
       clearRows()
-      editingSettings = false
     }
   }
 
@@ -175,33 +173,25 @@ Panel {
   }
 
   // ---- Settings ------------------------------------------------------------
-  property bool editingSettings: false
-  property bool saving: false
-  property string settingsError: ""
-  property var lastSave: null
-
-  function openSettings() { editingSettings = true; open() }
-  function closeSettings() { editingSettings = false }
-
-  function save(key, next) {
-    settingsError = ""
-    lastSave = { key: key, value: next }
-    var result = Prefs.save(root.bar, root.moduleName, Schema.fields, root.settings, key, next)
-    if (!result.ok) { settingsError = result.error; return }
-    if (result.command.length === 0) return
-    saving = true
-    saveProcess.command = result.command
-    saveProcess.running = true
+  // Saves are queued (inline when the host allows, else one CLI at a time);
+  // the page resets when the popup closes, never when it opens.
+  FoamyPrefsQueue {
+    id: prefs
+    bar: root.bar
+    moduleName: root.moduleName
+    fields: Schema.fields
+    settings: root.settings
   }
-  function retrySave() { if (lastSave) save(lastSave.key, lastSave.value) }
+  FoamySettingsState { id: settingsState; panel: root }
+  readonly property bool editingSettings: settingsState.editing
+  readonly property bool saving: prefs.saving
+  readonly property string settingsError: prefs.error
+  readonly property bool settingsRetryable: prefs.canRetry
 
-  Process {
-    id: saveProcess
-    onExited: function(code) {
-      root.saving = false
-      root.settingsError = code === 0 ? "" : "Couldn't save the setting."
-    }
-  }
+  function openSettings() { settingsState.show() }
+  function closeSettings() { settingsState.hide() }
+  function save(key, next) { prefs.save(key, next) }
+  function retrySave() { prefs.retry() }
 
   // ---- Firewall (Settings → AirPlay firewall) ------------------------------
   property string firewallState: ""

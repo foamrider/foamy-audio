@@ -54,6 +54,7 @@ Item {
     readonly property bool showPercentage: true
     readonly property bool saving: false
     readonly property string settingsError: ""
+    readonly property bool settingsRetryable: false
     readonly property bool firewallBusy: false
     readonly property string firewallState: state === "settings-firewall" ? "wide" : ""
     readonly property string firewallMessage: state === "settings-firewall"

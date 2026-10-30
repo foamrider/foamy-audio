@@ -352,7 +352,7 @@ PanelKeyCatcher {
     height: parent.height
     saving: view.audio.saving === true
     error: view.audio.settingsError ? FoamyI18n.t(view.audio.settingsError) : ""
-    retryable: !!view.audio.settingsError
+    retryable: view.audio.settingsRetryable === true
     onBack: view.audio.closeSettings()
     onRetry: view.audio.retrySave()
 

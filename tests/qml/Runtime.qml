@@ -51,10 +51,9 @@ ShellRoot {
 
   Component.onCompleted: Qt.callLater(stepOne)
 
-  // 4.5 emits textKey(text, modifiers); 4.0 textKey(text).
-  function key(view, text) {
-    try { view.textKey(text, 0) } catch (error) { view.textKey(text) }
-  }
+  // The host's textKey arity (4.0 text, 4.5 text + modifiers) via the kit.
+  FoamyCursor { id: keys }
+  function key(view, text) { keys.emitTextKey(view, text) }
 
   function leaders() {
     var count = 0

@@ -3,11 +3,7 @@ const assert = require('node:assert/strict')
 const Schema = require('../Preferences.js')
 const fs = require('node:fs')
 const path = require('node:path')
-const vm = require('node:vm')
-// kit/FoamyPrefs.js is a QML JS library; load it in a sandbox without its pragma.
-const sandbox = { module: { exports: {} }, console: { log() {}, warn() {} } }
-vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../kit/FoamyPrefs.js'), 'utf8').replace(/^\.pragma library\s*$/m, ''), sandbox)
-const Prefs = sandbox.module.exports
+const Prefs = require('../kit/node-loader.cjs').load('FoamyPrefs', { console: { log() {}, warn() {} } })
 const manifest = require('../manifest.json')
 
 test('manifest and panel share defaults and supported settings', () => {
