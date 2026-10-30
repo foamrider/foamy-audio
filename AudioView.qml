@@ -30,7 +30,7 @@ PanelKeyCatcher {
 
   implicitWidth: FoamyStyle.popupWidth
   implicitHeight: editing ? settingsPage.implicitHeight
-    : header.implicitHeight + hero.implicitHeight + listColumn.implicitHeight + footer.height
+    : band.implicitHeight + FoamyStyle.gap + listColumn.implicitHeight + footer.height
   blocked: editing
 
   function resetView() {
@@ -162,8 +162,8 @@ PanelKeyCatcher {
   }
 
   // ---- Main view ---------------------------------------------------------
-  FoamyHeader {
-    id: header
+  FoamyHeroBand {
+    id: band
     visible: !view.editing
     width: parent.width
     iconName: view.audio.outputMuted ? "volume-x" : "volume-2"
@@ -172,88 +172,87 @@ PanelKeyCatcher {
     settingsHasCursor: view.hasCursor("settings")
     onSettingsClicked: view.audio.openSettings()
     onSettingsHovered: function(hovered) { if (hovered) view.hover("settings") }
-    FoamyAction {
-      iconName: view.audio.outputMuted ? "volume-x" : "volume-2"
-      foreground: FoamyPalette.secondaryText
-      enabled: view.audio.hasOutput
-      hasCursor: view.hasCursor("outputMute")
-      tooltipText: FoamyI18n.t(view.audio.outputMuted ? "Unmute output" : "Mute output")
-      onHoveredChanged: if (hovered) view.hover("outputMute")
-      onClicked: view.audio.toggleOutputMute()
-    }
-    FoamyAction {
-      iconName: view.audio.inputMuted ? "mic-off" : "mic"
-      foreground: view.audio.inputMuted ? Commons.Color.urgent : FoamyPalette.secondaryText
-      enabled: view.audio.hasInput
-      hasCursor: view.hasCursor("inputMute")
-      tooltipText: FoamyI18n.t(view.audio.inputMuted ? "Unmute microphone" : "Mute microphone")
-      onHoveredChanged: if (hovered) view.hover("inputMute")
-      onClicked: view.audio.toggleInputMute()
-    }
-  }
-
-  FoamyCursorSurface {
-    id: hero
-    visible: !view.editing
-    anchors.top: header.bottom
-    x: FoamyStyle.gapLarge
-    width: parent.width - FoamyStyle.gapLarge * 2
-    implicitHeight: heroRow.implicitHeight + FoamyStyle.gap * 2
-    hasCursor: view.hasCursor("volume")
-    onHovered: view.hover("volume")
-    Accessible.role: Accessible.Slider
-    Accessible.name: FoamyI18n.t("Volume")
-    RowLayout {
-      id: heroRow
-      anchors.fill: parent
-      anchors.leftMargin: FoamyStyle.gap
-      anchors.rightMargin: FoamyStyle.gap
-      spacing: FoamyStyle.gapLarge
-      Item {
-        Layout.alignment: Qt.AlignVCenter
-        implicitWidth: heroNumber.implicitWidth + (heroUnit.visible ? FoamyStyle.gapTiny + heroUnit.implicitWidth : 0)
-        implicitHeight: heroNumber.implicitHeight
-        opacity: view.audio.outputMuted ? 0.5 : 1
-        Text {
-          id: heroNumber
-          anchors.left: parent.left
-          text: view.audio.hasOutput ? FoamyI18n.number(Math.round(outputSlider.value * 100)) : "—"
-          textFormat: Text.PlainText
-          color: FoamyPalette.text
-          font.family: FoamyStyle.fontFamily
-          font.pixelSize: FoamyStyle.font.numeral
-          font.weight: Font.DemiBold
-          font.letterSpacing: -2
-        }
-        Text {
-          id: heroUnit
-          visible: view.audio.hasOutput
-          anchors.left: heroNumber.right
-          anchors.leftMargin: FoamyStyle.gapTiny
-          anchors.baseline: heroNumber.baseline
-          text: "%"
-          textFormat: Text.PlainText
-          color: FoamyPalette.secondaryText
-          font.family: FoamyStyle.fontFamily
-          font.pixelSize: FoamyStyle.font.display
-        }
-      }
-      AudioSlider {
-        id: outputSlider
-        Layout.fillWidth: true
-        Layout.alignment: Qt.AlignVCenter
-        label: FoamyI18n.t("Volume")
+    trailing: [
+      FoamyAction {
+        iconName: view.audio.outputMuted ? "volume-x" : "volume-2"
+        foreground: FoamyPalette.secondaryText
         enabled: view.audio.hasOutput
-        value: view.audio.hasOutput ? view.audio.outputVolume : 0
-        onMoved: view.audio.setOutputVolume(value)
+        hasCursor: view.hasCursor("outputMute")
+        tooltipText: FoamyI18n.t(view.audio.outputMuted ? "Unmute output" : "Mute output")
+        onHoveredChanged: if (hovered) view.hover("outputMute")
+        onClicked: view.audio.toggleOutputMute()
+      },
+      FoamyAction {
+        iconName: view.audio.inputMuted ? "mic-off" : "mic"
+        foreground: view.audio.inputMuted ? Commons.Color.urgent : FoamyPalette.secondaryText
+        enabled: view.audio.hasInput
+        hasCursor: view.hasCursor("inputMute")
+        tooltipText: FoamyI18n.t(view.audio.inputMuted ? "Unmute microphone" : "Mute microphone")
+        onHoveredChanged: if (hovered) view.hover("inputMute")
+        onClicked: view.audio.toggleInputMute()
       }
-    }
+    ]
+      // Hero slot: the output volume (numeral) and its slider, one cursor stop.
+      FoamyCursorSurface {
+        id: hero
+        Layout.fillWidth: true
+        implicitHeight: heroRow.implicitHeight + FoamyStyle.gap * 2
+        hasCursor: view.hasCursor("volume")
+        onHovered: view.hover("volume")
+        Accessible.role: Accessible.Slider
+        Accessible.name: FoamyI18n.t("Volume")
+        RowLayout {
+          id: heroRow
+          anchors.fill: parent
+          anchors.leftMargin: FoamyStyle.gap
+          anchors.rightMargin: FoamyStyle.gap
+          spacing: FoamyStyle.gapLarge
+          Item {
+            Layout.alignment: Qt.AlignVCenter
+            implicitWidth: heroNumber.implicitWidth + (heroUnit.visible ? FoamyStyle.gapTiny + heroUnit.implicitWidth : 0)
+            implicitHeight: heroNumber.implicitHeight
+            opacity: view.audio.outputMuted ? 0.5 : 1
+            Text {
+              id: heroNumber
+              anchors.left: parent.left
+              text: view.audio.hasOutput ? FoamyI18n.number(Math.round(outputSlider.value * 100)) : "—"
+              textFormat: Text.PlainText
+              color: FoamyPalette.text
+              font.family: FoamyStyle.fontFamily
+              font.pixelSize: FoamyStyle.font.numeral
+              font.weight: Font.DemiBold
+              font.letterSpacing: -2
+            }
+            Text {
+              id: heroUnit
+              visible: view.audio.hasOutput
+              anchors.left: heroNumber.right
+              anchors.leftMargin: FoamyStyle.gapTiny
+              anchors.baseline: heroNumber.baseline
+              text: "%"
+              textFormat: Text.PlainText
+              color: FoamyPalette.secondaryText
+              font.family: FoamyStyle.fontFamily
+              font.pixelSize: FoamyStyle.font.display
+            }
+          }
+          AudioSlider {
+            id: outputSlider
+            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignVCenter
+            label: FoamyI18n.t("Volume")
+            enabled: view.audio.hasOutput
+            value: view.audio.hasOutput ? view.audio.outputVolume : 0
+            onMoved: view.audio.setOutputVolume(value)
+          }
+        }
+      }
   }
 
   Flickable {
     id: scroll
     visible: !view.editing
-    anchors.top: hero.bottom
+    anchors.top: band.bottom
     anchors.topMargin: FoamyStyle.gap
     anchors.bottom: footer.top
     width: parent.width
