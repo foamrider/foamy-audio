@@ -128,12 +128,16 @@ FoamyCursorSurface {
       step: root.step
       onMoved: function(value) { root.volumeMoved(value) }
     }
+    // Every row with a volume keeps the meter's slot, so the percentages of
+    // all sections line up; only the selected input shows the meter.
     Rectangle {
-      visible: root.levelVisible
+      visible: root.levelVisible || root.volumeVisible
+      opacity: root.levelVisible ? 1 : 0
       Layout.preferredWidth: Commons.Style.space(3)
       Layout.preferredHeight: Commons.Style.space(20)
       radius: width / 2
       color: Qt.alpha(Commons.Color.popups.text, 0.18)
+      Accessible.ignored: !root.levelVisible
       Accessible.role: Accessible.Indicator
       Accessible.name: root.label
       Accessible.description: root.levelDescription
