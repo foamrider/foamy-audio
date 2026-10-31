@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "foamy.audio",
   "name": "Foamy Audio",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "foamrider",
   "description": "Audio outputs, microphones, per-app volumes and AirPlay",
   "kinds": [
@@ -24,7 +24,7 @@
       {
         "key": "showPercentage",
         "type": "boolean",
-        "label": "Show bar percentage",
+        "label": "Show percentage in the bar",
         "defaultValue": true
       }
     ]

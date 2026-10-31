@@ -18,21 +18,48 @@ function isAudioSource(node) {
     || mediaClass.indexOf("Source") !== -1
 }
 
-function listSnapshot(list) {
-  return list && list.slice ? list.slice() : []
+// Repeaters get rows of primitives, never live PwNode objects: PipeWire can
+// remove a node while Quickshell is dispatching the removal, and a delegate
+// still holding it dereferences a dead QObject (the 4.5 first-party fix).
+function nodeRow(node) {
+  if (!node || node.id === undefined || node.id === null) return null
+  return { id: node.id, name: String(node.name || "") }
 }
 
-function outputVolumeName(volume, muted) {
-  if (muted) return "Muted"
-  var p = Math.round(volume * 100)
-  if (p === 0) return "Silenced"
-  if (p >= 100) return "Concert hall"
-  if (p >= 85) return "Party mode"
-  if (p >= 70) return "Cranked up"
-  if (p >= 50) return "Steady groove"
-  if (p >= 30) return "Easy listening"
-  if (p >= 15) return "Murmur"
-  return "Whisper"
+function rowSnapshot(list) {
+  var values = list && list.length ? list : []
+  var rows = []
+  for (var i = 0; i < values.length; i++) {
+    var row = nodeRow(values[i])
+    if (row) rows.push(row)
+  }
+  return rows
+}
+
+// A row resolves to the live node with the same id and name, or null.
+function nodeFor(row, nodes) {
+  if (!row) return null
+  var list = nodes || []
+  for (var i = 0; i < list.length; i++) {
+    var n = list[i]
+    if (n && n.id === row.id && String(n.name || "") === row.name) return n
+  }
+  return null
+}
+
+// The shell's own level meter (Quickshell's peak monitor stream). 4.5 has
+// AudioNodes.isShellLevelMeter; this is the same rule for 4.0.
+function isShellLevelMeter(name) {
+  var value = String(name || "")
+  return value === "quickshell" || value === "quickshell-peak-monitor"
+}
+
+// A virtual source (Audio/Source/Virtual) has no PwNode.audio in Quickshell;
+// `omarchy-audio-sink-availability sources` (4.5) still lists it.
+function isUntypedSource(node, sourceAvailability) {
+  if (!node || node.audio || node.isStream || node.isSink) return false
+  var name = String(node.name || "")
+  return name !== "" && !!sourceAvailability && Object.prototype.hasOwnProperty.call(sourceAvailability, name)
 }
 
 function parseSinkAvailability(raw) {
@@ -183,39 +210,6 @@ function airplayRoomLabel(node) {
   return "AirPlay speaker"
 }
 
-function airplayDeviceDetail(node) {
-  if (!node) return ""
-  var p = nodeProps(node)
-  var hostname = String(p["raop.hostname"] || p["device.string"] || node.name || "")
-  var vendor = friendlyDeviceLabel(p["device.vendor.name"] || "")
-  if (!vendor && /sonos/i.test(hostname)) vendor = "Sonos"
-
-  var model = friendlyDeviceLabel(
-    p["device.model"] || p["raop.model"] || p["device.product.name"] || ""
-  )
-  var room = airplayRoomLabel(node).toLowerCase()
-  if (model.toLowerCase() === room) model = ""
-
-  var product = [vendor, model].filter(function(value, index, values) {
-    return value && values.indexOf(value) === index
-  }).join(" ")
-  return product
-}
-
-function airplayPeerDetail(peer) {
-  if (!peer) return ""
-  var vendor = friendlyDeviceLabel(peer.vendor || "")
-  var model = friendlyDeviceLabel(peer.model || "")
-  if (/^AppleTV/i.test(String(peer.model || ""))) {
-    vendor = "Apple"
-    model = "TV"
-  }
-  var product = [vendor, model].filter(function(value, index, values) {
-    return value && values.indexOf(value) === index
-  }).join(" ")
-  return product
-}
-
 function isHeadphones(node, bluetoothDevices) {
   if (!node) return false
   var p = nodeProps(node)
@@ -245,34 +239,6 @@ function isHeadphones(node, bluetoothDevices) {
   // PipeWire often labels a Bluetooth headset only by product name. Match its
   // BlueZ address and use the semantic icon instead of guessing from branding.
   return bluetoothDeviceIsHeadset(bluetoothDeviceForSink(node, bluetoothDevices))
-}
-
-function sinkGlyph(node, bluetoothDevices) {
-  if (!node) return "󰓃"
-  if (isHeadphones(node, bluetoothDevices)) return "󰋋"
-  if (bluetoothDeviceForSink(node, bluetoothDevices)) return "󰂯"
-  var p = nodeProps(node)
-  var blob = String([
-    node.name, node.description, node.nickname,
-    p["device.icon-name"] || "",
-    p["device.product.name"] || ""
-  ].join(" ")).toLowerCase()
-  if (blob.indexOf("bluetooth") !== -1) return "󰂯"
-  if (blob.indexOf("hdmi") !== -1 || blob.indexOf("display") !== -1) return "󰍹"
-  return "󰓃"
-}
-
-function sourceGlyph(node) {
-  if (!node) return "󰍬"
-  var p = nodeProps(node)
-  var blob = String([
-    node.name, node.description, node.nickname,
-    p["device.icon-name"] || ""
-  ].join(" ")).toLowerCase()
-  if (blob.indexOf("headset") !== -1) return "󰋋"
-  if (blob.indexOf("bluetooth") !== -1) return "󰂯"
-  if (blob.indexOf("webcam") !== -1 || blob.indexOf("camera") !== -1) return "󰄀"
-  return "󰍬"
 }
 
 function friendlyStreamLabel(label) {
@@ -385,22 +351,15 @@ function streamLabel(node, players, streams) {
     || label) || "Stream"
 }
 
-function streamRepresentsPlayer(node, player, players, streams) {
-  if (!node || !player) return false
-  var playerLabel = mprisPlayerLabel(player)
-  if (!playerLabel) return false
-
-  var label = rawStreamLabel(node)
-  if (!streamLabelIsGeneric(label)) return streamRepresentsMprisPlayer(label, playerLabel)
-  return streamRepresentsMprisPlayer(streamLabel(node, players, streams), playerLabel)
-}
-
 if (typeof module !== "undefined") {
   module.exports = {
     isPlaybackStream: isPlaybackStream,
     isAudioSource: isAudioSource,
-    listSnapshot: listSnapshot,
-    outputVolumeName: outputVolumeName,
+    nodeRow: nodeRow,
+    rowSnapshot: rowSnapshot,
+    nodeFor: nodeFor,
+    isShellLevelMeter: isShellLevelMeter,
+    isUntypedSource: isUntypedSource,
     parseSinkAvailability: parseSinkAvailability,
     friendlyDeviceLabel: friendlyDeviceLabel,
     nodeProps: nodeProps,
@@ -414,11 +373,7 @@ if (typeof module !== "undefined") {
     uniqueAirplaySinks: uniqueAirplaySinks,
     cleanAirplayLabel: cleanAirplayLabel,
     airplayRoomLabel: airplayRoomLabel,
-    airplayDeviceDetail: airplayDeviceDetail,
-    airplayPeerDetail: airplayPeerDetail,
     isHeadphones: isHeadphones,
-    sinkGlyph: sinkGlyph,
-    sourceGlyph: sourceGlyph,
     friendlyStreamLabel: friendlyStreamLabel,
     streamLabelKey: streamLabelKey,
     streamLabelIsGeneric: streamLabelIsGeneric,
@@ -429,7 +384,6 @@ if (typeof module !== "undefined") {
     mprisLabelsFor: mprisLabelsFor,
     matchingMprisStreamLabel: matchingMprisStreamLabel,
     unmatchedMprisStreamLabel: unmatchedMprisStreamLabel,
-    streamLabel: streamLabel,
-    streamRepresentsPlayer: streamRepresentsPlayer
+    streamLabel: streamLabel
   }
 }

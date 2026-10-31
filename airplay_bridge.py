@@ -72,32 +72,40 @@ def decode_avahi(text: str) -> str:
     return decoded.decode("utf-8", errors="replace")
 
 
+def parse_avahi_record(fields: list[str]) -> dict[str, Any] | None:
+    port = int(fields[8])
+    if not 0 < port < 65536:
+        raise ValueError(f"invalid port {port}")
+    service_name = decode_avahi(fields[3])
+    hostname = decode_avahi(fields[6])
+    txt = {key: decode_avahi(value) for key, value in TXT_FIELD.findall(fields[9])}
+    return {
+        "name": service_name.split("@", 1)[-1] if "@" in service_name else service_name,
+        "hostname": hostname,
+        "address": fields[7],
+        "port": port,
+        "vendor": "Sonos" if hostname.lower().startswith("sonos-") else "",
+        "model": txt.get("am", ""),
+        "key": service_name.lower(),
+    }
+
+
 def parse_avahi_receivers(output: str) -> list[dict[str, Any]]:
     receivers: dict[str, dict[str, Any]] = {}
     for raw_line in output.splitlines():
         fields = raw_line.split(";", 9)
         if len(fields) < 10 or fields[0] != "=":
             continue
-
-        service_name = decode_avahi(fields[3])
-        hostname = decode_avahi(fields[6])
-        address = fields[7]
-        txt = {key: decode_avahi(value) for key, value in TXT_FIELD.findall(fields[9])}
-        room = service_name.split("@", 1)[-1] if "@" in service_name else service_name
-        vendor = "Sonos" if hostname.lower().startswith("sonos-") else ""
-        key = service_name.lower()
+        try:
+            receiver = parse_avahi_record(fields)
+        except (ValueError, UnicodeError):
+            # One malformed record must not hide every other speaker.
+            continue
+        key = receiver.pop("key")
         current = receivers.get(key)
-        receiver = {
-            "name": room,
-            "hostname": hostname,
-            "address": address,
-            "port": int(fields[8]),
-            "vendor": vendor,
-            "model": txt.get("am", ""),
-        }
         # Prefer the IPv4 record because PipeWire includes that address in the
         # generated RAOP node name for discovered receivers.
-        if current is None or (":" in current["address"] and ":" not in address):
+        if current is None or (":" in current["address"] and ":" not in receiver["address"]):
             receivers[key] = receiver
     return list(receivers.values())
 

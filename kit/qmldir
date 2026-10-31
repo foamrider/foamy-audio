@@ -1,0 +1,26 @@
+# foamy-kit 0.3.4 caf77250bcad2610b75ae1ad9e3b1c632d691d3d0083786b9dc57ff1394a0686 — do not edit; change foamy-kit and run sync
+FoamyAction 1.0 FoamyAction.qml
+FoamyCursor 1.0 FoamyCursor.qml
+FoamyCursorSurface 1.0 FoamyCursorSurface.qml
+FoamyHeader 1.0 FoamyHeader.qml
+FoamyHeroBand 1.0 FoamyHeroBand.qml
+singleton FoamyI18n 1.0 FoamyI18n.qml
+FoamyIcon 1.0 FoamyIcon.qml
+FoamyIpc 1.0 FoamyIpc.qml
+FoamyIpcPreference 1.0 FoamyIpcPreference.qml
+FoamyMember 1.0 FoamyMember.qml
+singleton FoamyMotion 1.0 FoamyMotion.qml
+FoamyNumberField 1.0 FoamyNumberField.qml
+singleton FoamyPalette 1.0 FoamyPalette.qml
+FoamyPopup 1.0 FoamyPopup.qml
+FoamyPrefsQueue 1.0 FoamyPrefsQueue.qml
+FoamySettingsError 1.0 FoamySettingsError.qml
+FoamySettingsHeader 1.0 FoamySettingsHeader.qml
+FoamySettingsPage 1.0 FoamySettingsPage.qml
+FoamySettingsSection 1.0 FoamySettingsSection.qml
+FoamySettingsState 1.0 FoamySettingsState.qml
+singleton FoamyShared 1.0 FoamyShared.qml
+singleton FoamyStyle 1.0 FoamyStyle.qml
+FoamyTextSettingField 1.0 FoamyTextSettingField.qml
+FoamyToggle 1.0 FoamyToggle.qml
+SafeTextField 1.0 SafeTextField.qml
