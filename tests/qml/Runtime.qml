@@ -120,6 +120,7 @@ ShellRoot {
       eq(view.outputExpanded, false, "o folds Output")
       shell.key(view, "w")
       eq(view.wirelessExpanded, true, "w unfolds Wireless")
+      check(view.wheel._following === view.sectionItem("wireless"), "unfolding scrolls Wireless into view")
       eq(view.LayoutMirroring.enabled, shell.lang === "ar", "popup body mirrors in RTL only")
       var titles = { en: "Audio", no: "Lyd", ar: "Audio" }
       if (shell.lang !== "ar") eq(first.popup.bodyItem.children.length > 0 ? FoamyI18n.t("Audio") : "", titles[shell.lang], "title translated")

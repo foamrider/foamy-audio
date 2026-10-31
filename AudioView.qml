@@ -89,6 +89,15 @@ PanelKeyCatcher {
     else if (name === "input") inputExpanded = !inputExpanded
     else if (name === "apps") appsExpanded = !appsExpanded
     else if (name === "wireless") wirelessExpanded = !wirelessExpanded
+    else return
+    // Bring what was just unfolded into view (it follows the section while
+    // its rows are laid out).
+    var section = sectionItem(name)
+    if (section && section.expanded) wheel.ensureVisible(section)
+  }
+  function sectionItem(name) {
+    return name === "output" ? outputSection : name === "input" ? inputSection
+      : name === "apps" ? appsSection : name === "wireless" ? wirelessSection : null
   }
   function activateStop() {
     var key = cursorKey
@@ -248,6 +257,8 @@ PanelKeyCatcher {
       }
   }
 
+  FoamyWheelScroll { id: wheel; target: scroll }
+  readonly property alias wheel: wheel
   Flickable {
     id: scroll
     visible: !view.editing
@@ -272,6 +283,7 @@ PanelKeyCatcher {
       spacing: FoamyStyle.gapTiny
 
       Section {
+        id: outputSection
         name: "output"
         label: FoamyI18n.t("Output")
         expanded: view.outputExpanded
@@ -283,6 +295,7 @@ PanelKeyCatcher {
         }
       }
       Section {
+        id: inputSection
         name: "input"
         label: FoamyI18n.t("Input")
         expanded: view.inputExpanded
@@ -295,6 +308,7 @@ PanelKeyCatcher {
         }
       }
       Section {
+        id: appsSection
         name: "apps"
         label: FoamyI18n.t("Apps")
         expanded: view.appsExpanded
@@ -306,6 +320,7 @@ PanelKeyCatcher {
         }
       }
       Section {
+        id: wirelessSection
         name: "wireless"
         label: FoamyI18n.t("Wireless")
         expanded: view.wirelessExpanded
