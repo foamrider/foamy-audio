@@ -92,6 +92,8 @@ uninstall PipeWire, Avahi or other packages.
 
 ## Development
 
+`kit/` holds shared components copied from [foamy-kit](https://github.com/foamrider/foamy-kit); edit them there, not here.
+
 ```sh
 node tests/model.test.js && node tests/preferences.test.js && node tests/i18n.test.cjs
 python3 -I tests/test_airplay_bridge.py && python3 -I tests/test_microphone_peak.py && python3 -I tests/test_ufw_check.py
