@@ -5,11 +5,15 @@ import "kit"
 
 // The volume slider: pointer only (the panel cursor drives keyboard volume
 // with h/l), mirrored in RTL through Slider's own mirroring.
+// The panel cursor on a slider rings the thumb and lifts the track; there is
+// never a filled row behind it (DESIGN.md "Sliders"). foamy-media's
+// MediaSlider draws the same slider.
 Slider {
   id: root
   property string label: ""
   property bool mini: false
   property bool revealed: true
+  property bool hasCursor: false
   from: 0
   to: 1
   stepSize: 0.01
@@ -26,7 +30,8 @@ Slider {
     width: root.availableWidth
     height: Commons.Style.space(root.mini ? 3 : 4)
     radius: height / 2
-    color: Qt.alpha(Commons.Color.popups.text, 0.18)
+    color: Qt.alpha(Commons.Color.popups.text, root.hasCursor ? 0.28 : 0.18)
+    Behavior on color { ColorAnimation { duration: FoamyMotion.hover } }
     Rectangle {
       // Fill represents volume; visualPosition includes the mirrored handle position.
       x: root.mirrored ? parent.width - width : 0
@@ -43,5 +48,18 @@ Slider {
     height: width
     radius: width / 2
     color: Commons.Color.popups.text
+    // The cursor ring around the thumb.
+    Rectangle {
+      anchors.centerIn: parent
+      width: parent.width + Commons.Style.space(root.mini ? 6 : 8)
+      height: width
+      radius: width / 2
+      color: "transparent"
+      border.width: Math.max(1, Commons.Style.space(2))
+      border.color: Commons.Color.accent
+      opacity: root.hasCursor ? 1 : 0
+      visible: opacity > 0
+      Behavior on opacity { NumberAnimation { duration: FoamyMotion.hover } }
+    }
   }
 }

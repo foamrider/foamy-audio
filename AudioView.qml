@@ -192,15 +192,13 @@ PanelKeyCatcher {
         onClicked: view.audio.toggleInputMute()
       }
     ]
-      // Hero slot: the output volume (numeral) and its slider, one cursor stop.
-      FoamyCursorSurface {
+      // Hero slot: the output volume (numeral) and its slider, one cursor
+      // stop. The cursor rings the slider's thumb; no filled row behind it.
+      Item {
         id: hero
         Layout.fillWidth: true
         implicitHeight: heroRow.implicitHeight + FoamyStyle.gap * 2
-        hasCursor: view.hasCursor("volume")
-        onHovered: view.hover("volume")
-        Accessible.role: Accessible.Slider
-        Accessible.name: FoamyI18n.t("Volume")
+        HoverHandler { onHoveredChanged: if (hovered) view.hover("volume") }
         RowLayout {
           id: heroRow
           anchors.fill: parent
@@ -241,6 +239,7 @@ PanelKeyCatcher {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignVCenter
             label: FoamyI18n.t("Volume")
+            hasCursor: view.hasCursor("volume")
             enabled: view.audio.hasOutput
             value: view.audio.hasOutput ? view.audio.outputVolume : 0
             onMoved: view.audio.setOutputVolume(value)

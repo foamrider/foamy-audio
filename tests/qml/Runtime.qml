@@ -54,6 +54,20 @@ ShellRoot {
   // The host's textKey arity (4.0 text, 4.5 text + modifiers) via the kit.
   FoamyCursor { id: keys }
   function key(view, text) { keys.emitTextKey(view, text) }
+  function findNamed(item, name) {
+    if (!item) return null
+    if (item.objectName === name) return item
+    var kids = item.children || []
+    for (var i = 0; i < kids.length; i++) { var hit = findNamed(kids[i], name); if (hit) return hit }
+    return null
+  }
+  function findType(item, test) {
+    if (!item) return null
+    if (test(item)) return item
+    var kids = item.children || []
+    for (var i = 0; i < kids.length; i++) { var hit = findType(kids[i], test); if (hit) return hit }
+    return null
+  }
 
   function leaders() {
     var count = 0
@@ -89,6 +103,15 @@ ShellRoot {
       eq(view.cursorKey, "", "no cursor highlight on open")
       view.moveRequested(0, 1)
       eq(view.cursorKey, "volume", "first move lands on the volume slider")
+      // Sliders (DESIGN.md "Sliders"): the cursor rings the header slider's
+      // thumb; no filled row behind it.
+      var slider = findType(view, function(item) { return item.hasCursor !== undefined && item.mini !== undefined })
+      check(slider !== null, "header slider found")
+      if (slider) {
+        eq(slider.hasCursor, true, "the cursor on the volume rings the slider thumb")
+        var hero = slider.parent ? slider.parent.parent : null
+        eq(hero && hero.color !== undefined, false, "no filled row behind the header slider")
+      }
       view.moveRequested(0, -1)
       eq(view.cursorKey, "settings", "up from the slider reaches the header")
       view.moveRequested(-1, 0)

@@ -8,7 +8,7 @@ Item {
   id: preview
   required property QtObject bar
   required property Item anchorItem
-  property var previewStates: ["default", "wireless", "empty", "settings", "settings-firewall"]
+  property var previewStates: ["default", "wireless", "empty", "settings", "settings-firewall", "cursor-volume"]
   property string previewState: "default"
   readonly property Item popup: popup
 
@@ -88,6 +88,14 @@ Item {
     function save(k, v) {}
     function retrySave() {}
     function firewallAction(a) {}
+  }
+
+  // The cursor-volume shot puts the panel cursor on the header slider.
+  onPreviewStateChanged: if (previewState === "cursor-volume") placeCursor.start()
+  Timer {
+    id: placeCursor
+    interval: 300
+    onTriggered: if (popup.bodyItem) popup.bodyItem.hover("volume")
   }
 
   FoamyPopup {
