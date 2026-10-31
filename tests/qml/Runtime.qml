@@ -128,6 +128,16 @@ ShellRoot {
       shell.key(view, "s")
       eq(first.editingSettings, true, "s opens Settings")
       eq(view.blocked, true, "settings page owns the keys")
+      // Firewall actions are form buttons: Verify, Apply (primary), Remove (destructive).
+      var verify = findNamed(view, "audioFirewallVerify")
+      var apply = findNamed(view, "audioFirewallApply")
+      var remove = findNamed(view, "audioFirewallRemove")
+      check(verify !== null && apply !== null && remove !== null, "firewall buttons exist")
+      if (verify && apply && remove) {
+        eq(verify.kind + "/" + apply.kind + "/" + remove.kind, "secondary/primary/destructive", "firewall button kinds")
+        eq(verify.focusable && apply.focusable && remove.focusable, true, "firewall buttons join the Tab chain")
+        eq(apply.enabled, false, "Apply waits for speakers")
+      }
       first.save("showPercentage", false)
       eq(mockBar.saved.length, 1, "setting saved inline")
       if (mockBar.saved.length === 1) {

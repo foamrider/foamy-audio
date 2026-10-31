@@ -159,6 +159,14 @@ PanelKeyCatcher {
     else if (key === "w") toggleSection("wireless")
   }
 
+  // The firewall action the buttons last started (its button spins while busy).
+  property string firewallPending: ""
+  function firewall(action) {
+    if (audio.firewallBusy) return
+    firewallPending = action
+    audio.firewallAction(action)
+  }
+
   // AirPlay scanning dots; static under reduced motion, nothing while hidden.
   property int scanStep: 3
   readonly property string scanDots: ["", ".", "..", "..."][scanStep]
@@ -392,40 +400,46 @@ PanelKeyCatcher {
       width: parent.width
       title: FoamyI18n.t("AirPlay firewall")
       description: FoamyI18n.t("Speakers send timing data back on UDP 6001–6002. Apply allows only the network your speakers are on. Each action asks for administrator authorization.")
+      // Form buttons (DESIGN.md "Buttons"): Verify reads the rules, Apply is
+      // the form's one primary action, Remove is destructive and sits apart.
       RowLayout {
         width: parent.width
         spacing: FoamyStyle.gap
-        FoamyAction {
+        FoamyButton {
+          objectName: "audioFirewallVerify"
           focusable: true
-          iconName: ""
-          label: FoamyI18n.t("Verify")
-          foreground: FoamyPalette.secondaryText
-          enabled: !view.audio.firewallBusy
+          text: FoamyI18n.t("Verify")
+          iconName: "check"
+          busy: view.audio.firewallBusy === true && view.firewallPending === "verify"
+          actionEnabled: !view.audio.firewallBusy
           tooltipText: FoamyI18n.t("Read the UFW rules")
-          onClicked: view.audio.firewallAction("verify")
+          onClicked: view.firewall("verify")
         }
-        FoamyAction {
+        FoamyButton {
+          objectName: "audioFirewallApply"
           focusable: true
-          iconName: ""
-          label: FoamyI18n.t("Apply")
-          foreground: FoamyPalette.secondaryText
-          enabled: !view.audio.firewallBusy && view.audio.airplayPeerCount > 0 && view.audio.firewallState !== "open"
+          kind: "primary"
+          text: FoamyI18n.t("Apply")
+          busy: view.audio.firewallBusy === true && view.firewallPending === "open"
+          actionEnabled: !view.audio.firewallBusy
+          enabled: view.audio.airplayPeerCount > 0 && view.audio.firewallState !== "open"
           tooltipText: view.audio.airplayPeerCount > 0
             ? FoamyI18n.tn("Allow the network of %1 speakers", view.audio.airplayPeerCount)
             : FoamyI18n.t("No AirPlay speakers found yet.")
-          onClicked: view.audio.firewallAction("open")
-        }
-        FoamyAction {
-          focusable: true
-          iconName: ""
-          label: FoamyI18n.t("Remove")
-          foreground: FoamyPalette.secondaryText
-          destructive: true
-          enabled: !view.audio.firewallBusy
-          tooltipText: FoamyI18n.t("Remove the rules Foamy Audio added")
-          onClicked: view.audio.firewallAction("remove")
+          onClicked: view.firewall("open")
         }
         Item { Layout.fillWidth: true }
+        FoamyButton {
+          objectName: "audioFirewallRemove"
+          focusable: true
+          kind: "destructive"
+          text: FoamyI18n.t("Remove")
+          iconName: "trash"
+          busy: view.audio.firewallBusy === true && view.firewallPending === "remove"
+          actionEnabled: !view.audio.firewallBusy
+          tooltipText: FoamyI18n.t("Remove the rules Foamy Audio added")
+          onClicked: view.firewall("remove")
+        }
       }
       Text {
         width: parent.width
