@@ -29,5 +29,8 @@
       }
     ]
   },
-  "license": "MIT"
+  "license": "MIT",
+  "omarchy": {
+    "clonedFrom": "omarchy.audio"
+  }
 }
