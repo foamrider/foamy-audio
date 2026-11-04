@@ -4,6 +4,8 @@ Audio outputs, microphones, app volume and AirPlay for the Omarchy bar.
 
 ![Foamy Audio screenshot](preview.png)
 
+The stock **Super+Ctrl+A** shortcut opens Foamy Audio when enabled. The plugin declares itself as the `omarchy.audio` replacement, so Omarchy also restores the stock widget when the replacement is removed.
+
 ## Install
 
 ```sh
