@@ -8,6 +8,7 @@ import qs.Ui
 import "kit"
 import "Model.js" as Model
 import "Preferences.js" as Schema
+import "kit/FoamyNative.js" as FoamyNative
 
 // The bar widget (one per monitor on 4.5). Shared state lives in the
 // AudioService singleton; this file owns the bar button, the popup with its
@@ -213,7 +214,7 @@ Panel {
 
   function firewallAction(action) {
     if (firewallProcess.running) return
-    var command = ["python3", AudioService.localPath(Qt.resolvedUrl("ufw_check.py")), action]
+    var command = [action]
     if (action !== "remove") {
       var peers = AudioService.airplayPeers
       for (var i = 0; i < peers.length; i++) if (peers[i] && peers[i].address) command.push("--peer", String(peers[i].address))
@@ -222,7 +223,7 @@ Panel {
     }
     firewallState = ""
     firewallMessage = ""
-    firewallProcess.command = command
+    firewallProcess.command = FoamyNative.command(AudioService.pluginDir, "foamy-audio-helper", ["ufw"].concat(command))
     firewallProcess.running = true
   }
 
@@ -231,6 +232,12 @@ Panel {
     stdout: StdioCollector { id: firewallOutput; waitForEnd: true }
     stderr: StdioCollector { id: firewallErrors; waitForEnd: true }
     onExited: function(code) {
+      if (FoamyNative.unavailable(code)) {
+        // No helper for this CPU: say so; firewall actions only run on request.
+        root.firewallState = "error"
+        root.firewallMessage = FoamyNative.UNAVAILABLE_TEXT
+        return
+      }
       try {
         var result = JSON.parse(firewallOutput.text)
         if (!result.state || typeof result.message !== "string" || typeof result.details !== "string")

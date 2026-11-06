@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell.Io
 import Quickshell.Services.Pipewire
+import "kit/FoamyNative.js" as FoamyNative
 
 Item {
   id: root
@@ -18,7 +19,8 @@ Item {
   readonly property bool useHelper: passive || !stereo
   readonly property string requestedKey: enabled && source && channels.length > 0 && useHelper && channelMap
     ? source.name + "|" + channelMap + "|" + passive : ""
-  readonly property string error: failure || (enabled && channels.length > 0 && useHelper && !channelMap
+  readonly property string error: failure || (helperUnavailable && enabled && useHelper ? FoamyNative.UNAVAILABLE_TEXT : "")
+    || (enabled && channels.length > 0 && useHelper && !channelMap
     ? "Microphone level unavailable" : "")
   readonly property real peak: !enabled || !source || !source.audio || source.audio.muted ? 0
     : !useHelper ? nativeMeter.peak
@@ -28,6 +30,8 @@ Item {
   property string launchedKey: ""
   property string failedKey: ""
   property bool stopping: false
+  // No helper for this CPU (exit 126/127): the meter says so and never relaunches.
+  property bool helperUnavailable: false
 
   onRequestedKeyChanged: {
     fallbackPeak = 0
@@ -44,12 +48,12 @@ Item {
       }
       return
     }
-    if (!requestedKey || requestedKey === failedKey) return
+    if (!requestedKey || requestedKey === failedKey || helperUnavailable) return
     launchedKey = requestedKey
     stopping = false
-    var command = ["python3", decodeURIComponent(Qt.resolvedUrl("microphone_peak.py").toString().replace(/^file:\/\//, "")), source.name, channelMap]
-    if (passive) command.push("--passive")
-    capture.command = command
+    var args = ["microphone-peak", source.name, channelMap]
+    if (passive) args.push("--passive")
+    capture.command = FoamyNative.command(FoamyNative.localPath(Qt.resolvedUrl(".")), "foamy-audio-helper", args)
     capture.running = true
   }
 
@@ -69,8 +73,13 @@ Item {
       }
     }
     stderr: StdioCollector { id: captureError }
-    onExited: {
+    onExited: function(exitCode) {
       root.fallbackPeak = 0
+      if (FoamyNative.unavailable(exitCode)) {
+        root.helperUnavailable = true
+        console.warn("Foamy Audio microphone meter: " + FoamyNative.UNAVAILABLE_TEXT)
+        return
+      }
       if (!root.stopping && root.launchedKey === root.requestedKey && root.requestedKey) {
         // Retry on reopen or device change, never spin on a missing or failed helper.
         root.failedKey = root.launchedKey
