@@ -98,7 +98,7 @@ uninstall PipeWire, Avahi or other packages.
 
 ```sh
 node tests/model.test.js && node tests/preferences.test.js && node tests/i18n.test.cjs
-python3 -I tests/test_airplay_bridge.py && python3 -I tests/test_microphone_peak.py && python3 -I tests/test_ufw_check.py
+python3 -I -m unittest discover -s tests -p 'test_*.py'   # helpers as processes, fake tools (tests/blackbox.py)
 bash tests/kit-check.sh
 python3 -I tests/runtime.py   # offscreen, 4.0 and 4.5 hosts; needs foamy-kit (FOAMY_KIT)
 ```
