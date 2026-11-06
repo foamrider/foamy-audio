@@ -8,6 +8,7 @@ import Quickshell.Services.Mpris
 import Quickshell.Services.Pipewire
 import "kit"
 import "Model.js" as Model
+import "kit/FoamyNative.js" as FoamyNative
 
 // Audio state shared by every Foamy Audio bar instance (4.5 draws one bar per
 // monitor): the PipeWire device model, the volume sink behind any DSP sink,
@@ -27,7 +28,23 @@ Singleton {
   property var platform: null   // AudioNodes: platformHides(), isShellLevelMeter()
   property var untyped: null    // UntypedInput: wpctl volume/mute for a virtual default input
 
-  readonly property string airplayBridge: localPath(Qt.resolvedUrl("airplay_bridge.py"))
+  // AirPlay runs the native helper, bin/<arch>/foamy-audio-helper airplay ….
+  readonly property string pluginDir: FoamyNative.localPath(Qt.resolvedUrl("."))
+  // No helper for this CPU (exit 126/127): AirPlay shows why and is not retried.
+  property bool airplayHelperUnavailable: false
+
+  function airplayCommand(args) {
+    return FoamyNative.command(pluginDir, "foamy-audio-helper", ["airplay"].concat(args))
+  }
+
+  function airplayExited(code) {
+    if (!FoamyNative.unavailable(code)) return
+    airplayHelperUnavailable = true
+    airplayDiscoveryActive = false
+    airplayScanTimeout.stop()
+    airplayError = FoamyNative.UNAVAILABLE_TEXT
+    airplayScanState = "error"
+  }
 
   readonly property var sink: Pipewire.defaultAudioSink
   readonly property var source: Pipewire.defaultAudioSource
@@ -378,7 +395,7 @@ Singleton {
   function teardown() {
     stopAirplayAfterStart = airplayStartProc.running
     if (airplayDiscoveryActive && !airplayActive && !airplayStopProc.running) {
-      Quickshell.execDetached(["python3", airplayBridge, "stop", "--skip-restore"])
+      Quickshell.execDetached(airplayCommand(["stop", "--skip-restore"]))
       airplayDiscoveryActive = false
       airplayScanState = "idle"
     }
@@ -402,19 +419,25 @@ Singleton {
 
   function startAirplayScan() {
     if (airplayStartProc.running || airplayStopProc.running || !wanted) return
+    if (airplayHelperUnavailable) {
+      airplayError = FoamyNative.UNAVAILABLE_TEXT
+      airplayScanState = "error"
+      return
+    }
     var restore = preferredLocalSink()
     stopAirplayAfterStart = false
     airplayError = ""
     airplayScanState = "scanning"
-    airplayStartProc.command = [
-      "python3", airplayBridge, "start",
+    airplayStartProc.command = airplayCommand([
+      "start",
       "--restore-id", restore && restore.id !== undefined ? String(restore.id) : "",
       "--restore-name", restore && restore.name ? String(restore.name) : ""
-    ]
+    ])
     airplayStartProc.running = true
   }
 
   function applyAirplayStart(raw) {
+    if (airplayHelperUnavailable) return
     var payload = parseAirplayPayload(raw)
     if (payload.ok !== true) {
       stopAirplayAfterStart = false
@@ -440,19 +463,20 @@ Singleton {
   }
 
   function stopAirplayDiscovery(restoreNode, skipRestore, resultState) {
-    if (airplayStopProc.running) return
+    if (airplayStopProc.running || airplayHelperUnavailable) return
     airplayScanTimeout.stop()
     airplayStopResultState = resultState || "idle"
     airplayScanState = "stopping"
-    var command = ["python3", airplayBridge, "stop"]
+    var command = ["stop"]
     if (restoreNode && restoreNode.id !== undefined && restoreNode.name)
       command.push("--restore-id", String(restoreNode.id), "--restore-name", String(restoreNode.name))
     if (skipRestore === true) command.push("--skip-restore")
-    airplayStopProc.command = command
+    airplayStopProc.command = airplayCommand(command)
     airplayStopProc.running = true
   }
 
   function applyAirplayStop(raw) {
+    if (airplayHelperUnavailable) return
     var payload = parseAirplayPayload(raw)
     if (payload.ok !== true) {
       airplayScanState = "error"
@@ -470,6 +494,7 @@ Singleton {
   }
 
   function applyAirplayStatus(raw) {
+    if (airplayHelperUnavailable) return
     var payload = parseAirplayPayload(raw)
     if (payload.ok === true) {
       airplayDiscoveryActive = payload.active === true
@@ -498,7 +523,7 @@ Singleton {
     if (index < 0) names.push(String(node.name))
     else names.splice(index, 1)
     airplayError = ""
-    airplaySelectProc.command = ["python3", airplayBridge, "select"].concat(names)
+    airplaySelectProc.command = airplayCommand(["select"].concat(names))
     airplaySelectProc.running = true
   }
 
@@ -510,7 +535,7 @@ Singleton {
     }
     // Disconnect receivers without unloading discovery while the list is in use.
     airplayError = ""
-    airplaySelectProc.command = ["python3", airplayBridge, "select", "--local-name", String(node.name)]
+    airplaySelectProc.command = airplayCommand(["select", "--local-name", String(node.name)])
     airplaySelectProc.running = true
   }
 
@@ -523,6 +548,7 @@ Singleton {
 
   Process {
     id: airplayStartProc
+    onExited: function(code) { root.airplayExited(code) }
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.applyAirplayStart(text)
@@ -533,6 +559,8 @@ Singleton {
     id: airplaySelectProc
     stdout: StdioCollector { id: airplaySelectOutput; waitForEnd: true }
     onExited: function(code) {
+      root.airplayExited(code)
+      if (root.airplayHelperUnavailable) return
       var payload = root.parseAirplayPayload(airplaySelectOutput.text)
       if (code !== 0 || payload.ok !== true) {
         root.airplayError = String(payload.error || "Could not change output.")
@@ -547,6 +575,7 @@ Singleton {
 
   Process {
     id: airplayStopProc
+    onExited: function(code) { root.airplayExited(code) }
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.applyAirplayStop(text)
@@ -555,7 +584,8 @@ Singleton {
 
   Process {
     id: airplayStatusProc
-    command: ["python3", root.airplayBridge, "status"]
+    command: root.airplayCommand(["status"])
+    onExited: function(code) { root.airplayExited(code) }
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.applyAirplayStatus(text)

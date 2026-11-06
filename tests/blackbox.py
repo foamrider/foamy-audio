@@ -6,8 +6,7 @@ aarch64 build through qemu binfmt:
 
   FOAMY_HELPER='["bin/aarch64/foamy-audio-helper"]' python3 -I -m unittest discover -s tests -p 'test_*.py'
 
-Without it the tests run the Python helpers (airplay_bridge.py, ufw_check.py,
-microphone_peak.py).
+The default is this machine's build, bin/<machine>/foamy-audio-helper.
 
 Every external tool is a fake. `pactl`, `avahi-browse`, `ip` and `pw-record`
 are scripts on a PATH that holds nothing else, so the real tools (and with
@@ -39,11 +38,6 @@ import tempfile
 import unittest
 
 PLUGIN = Path(__file__).resolve().parents[1]
-SCRIPTS = {
-    "airplay": PLUGIN / "airplay_bridge.py",
-    "ufw": PLUGIN / "ufw_check.py",
-    "microphone-peak": PLUGIN / "microphone_peak.py",
-}
 PKEXEC = "/usr/bin/pkexec"
 UFW = "/usr/bin/ufw"
 RAOP_DIR = "/usr/lib/pipewire-0.3"
@@ -52,9 +46,7 @@ RAOP_MODULE = "libpipewire-module-raop-discover.so"
 
 def _prefix():
     raw = os.environ.get("FOAMY_HELPER")
-    if not raw:
-        return None
-    prefix = json.loads(raw)
+    prefix = json.loads(raw) if raw else [str(PLUGIN / "bin" / platform.machine() / "foamy-audio-helper")]
     program = prefix[0] if "/" in prefix[0] else shutil.which(prefix[0])
     if not program:
         raise RuntimeError(f"helper program not found: {prefix[0]}")
@@ -67,9 +59,7 @@ PREFIX = _prefix()
 
 def helper(tool):
     """The argv that runs `tool`."""
-    if PREFIX is not None:
-        return [*PREFIX, tool]
-    return [sys.executable, "-I", str(SCRIPTS[tool])]
+    return [*PREFIX, tool]
 
 
 def _namespaces_work():
