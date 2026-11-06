@@ -223,8 +223,7 @@ Panel {
     }
     firewallState = ""
     firewallMessage = ""
-    firewallProcess.command = FoamyNative.command(FoamyNative.localPath(Qt.resolvedUrl(".")), "foamy-audio-helper",
-      ["ufw"].concat(command))
+    firewallProcess.command = FoamyNative.command(AudioService.pluginDir, "foamy-audio-helper", ["ufw"].concat(command))
     firewallProcess.running = true
   }
 

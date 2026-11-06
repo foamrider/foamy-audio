@@ -59,12 +59,6 @@ Singleton {
     return names
   }
 
-  function localPath(url) {
-    var value = String(url || "")
-    if (value.indexOf("file://") === 0) value = value.slice(7)
-    return decodeURIComponent(value)
-  }
-
   // Nodes of a platform's audio processing (4.5 /usr/share/omarchy-platform/audio.json)
   // are neither devices nor apps. Most machines, and every 4.0 host, have none.
   function platformHides(node) {

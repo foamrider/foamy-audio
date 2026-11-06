@@ -15,7 +15,10 @@ omarchy plugin add https://github.com/foamrider/foamy-audio.git --enable
 Remove the stock audio widget from the bar when replacing it. Built for
 Omarchy 4.5; it also loads on Omarchy 4.0.
 
-Requires PipeWire (with `pipewire-pulse` for `pactl`) and Python 3.
+Requires PipeWire (with `pipewire-pulse` for `pactl`). AirPlay, the firewall
+check and the microphone meter for non-stereo inputs run a bundled static
+helper, `bin/<arch>/foamy-audio-helper`, for x86_64 and aarch64; on other
+CPUs they say the helper isn't available.
 
 Optional:
 
@@ -98,10 +101,28 @@ uninstall PipeWire, Avahi or other packages.
 
 ```sh
 node tests/model.test.js && node tests/preferences.test.js && node tests/i18n.test.cjs
-python3 -I -m unittest discover -s tests -p 'test_*.py'   # helpers as processes, fake tools (tests/blackbox.py)
+python3 -I -m unittest discover -s tests -p 'test_*.py'   # the helper as a process, fake tools (tests/blackbox.py)
+FOAMY_HELPER='["bin/aarch64/foamy-audio-helper"]' python3 -I -m unittest discover -s tests -p 'test_*.py'   # via qemu binfmt
 bash tests/kit-check.sh
 python3 -I tests/runtime.py   # offscreen, 4.0 and 4.5 hosts; needs foamy-kit (FOAMY_KIT)
 ```
+
+The helper is Rust (`native/`, its contract at the top of
+`native/src/main.rs`); the committed binaries are built by foamy-kit and
+must match `native/native.pin`. After changing it (rustup with the toolchain
+in `rust-toolchain.toml`, `file`, and qemu-user binfmt for the aarch64 tests):
+
+```sh
+~/GitHub/Personal/foamy-kit/tools/build-native.sh . --test   # fmt, clippy, cargo tests
+~/GitHub/Personal/foamy-kit/tools/build-native.sh .          # both arches, native.pin
+~/GitHub/Personal/foamy-kit/tools/build-native.sh . --verify # clean rebuild is byte-identical
+```
+
+Run cargo yourself only with `CARGO_TARGET_DIR` outside the plugin (e.g.
+`~/.cache/foamy-native/foamy-audio`): the shell hot-reloads plugin folders.
+The tests only ever run fake `pactl`, `avahi-browse`, `ip` and `pw-record`;
+`/usr/bin/pkexec`, `/usr/bin/ufw` and the RAOP module directory are replaced
+by fakes inside a private user and mount namespace.
 
 Shared components live in `kit/`, copied from
 [foamy-kit](https://github.com/foamrider/foamy-kit); change them there and
