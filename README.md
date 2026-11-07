@@ -106,7 +106,7 @@ node tests/model.test.js && node tests/preferences.test.js && node tests/i18n.te
 python3 -I -m unittest discover -s tests -p 'test_*.py'   # the helper as a process, fake tools (tests/blackbox.py)
 FOAMY_HELPER='["bin/aarch64/foamy-audio-helper"]' python3 -I -m unittest discover -s tests -p 'test_*.py'   # via qemu binfmt
 bash tests/kit-check.sh
-python3 -I tests/runtime.py   # offscreen, 4.0 and 4.5 hosts; needs foamy-kit (FOAMY_KIT)
+python3 -I tests/runtime.py   # offscreen on the installed 4.5 shell (4.0 only with FOAMY_HOST_40); needs foamy-kit (FOAMY_KIT)
 ```
 
 The helper is Rust (`native/`, its contract at the top of
