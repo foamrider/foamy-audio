@@ -12,10 +12,13 @@ The stock **Super+Ctrl+A** shortcut opens Foamy Audio when enabled. The plugin d
 omarchy plugin add https://github.com/foamrider/foamy-audio.git --enable
 ```
 
-Remove the stock audio widget from the bar when replacing it. Built for
-Omarchy 4.5; it also loads on Omarchy 4.0.
+Remove the stock audio widget from the bar when replacing it. Requires
+Omarchy 4.5.
 
-Requires PipeWire (with `pipewire-pulse` for `pactl`) and Python 3.
+Requires PipeWire (with `pipewire-pulse` for `pactl`). AirPlay, the firewall
+check and the microphone meter for non-stereo inputs run a bundled static
+helper, `bin/<arch>/foamy-audio-helper`, for x86_64 and aarch64; on other
+CPUs they say the helper isn't available.
 
 Optional:
 
@@ -46,6 +49,8 @@ Keyboard: arrows or `hjkl` move the cursor, `h`/`l` change the cursor row's
 volume, Enter or Space activates, `m` mutes the cursor target, `o`/`i`/`a`/`w`
 fold Output, Input, Apps and Wireless, `s` opens Settings, Tab and Shift-Tab
 switch to the next bar panel, Esc closes. Hovering moves the same cursor.
+IPC: `omarchy-shell foamy.audio open|close|toggle|settings|status` (`status`
+prints JSON).
 
 ## Settings
 
@@ -76,8 +81,7 @@ captures passively, so opening the panel does not wake the microphone and
 disturb the playback clock.
 
 Language follows **Omarchy → Setup → Language** on Omarchy 4.5 (English and
-Norwegian catalogs; right-to-left languages mirror the panel). Omarchy 4.0
-shows English.
+Norwegian catalogs; right-to-left languages mirror the panel).
 
 ## Remove
 
@@ -94,19 +98,34 @@ uninstall PipeWire, Avahi or other packages.
 
 ## Development
 
-`kit/` holds shared components copied from [foamy-kit](https://github.com/foamrider/foamy-kit); edit them there, not here.
+`kit/` holds shared components copied from [foamy-kit](https://github.com/foamrider/foamy-kit); edit them there and run its `sync.sh`, not here.
 
 ```sh
 node tests/model.test.js && node tests/preferences.test.js && node tests/i18n.test.cjs
-python3 -I tests/test_airplay_bridge.py && python3 -I tests/test_microphone_peak.py && python3 -I tests/test_ufw_check.py
+python3 -I -m unittest discover -s tests -p 'test_*.py'   # the helper as a process, fake tools (tests/blackbox.py)
+FOAMY_HELPER='["bin/aarch64/foamy-audio-helper"]' python3 -I -m unittest discover -s tests -p 'test_*.py'   # via qemu binfmt
 bash tests/kit-check.sh
-python3 -I tests/runtime.py   # offscreen, 4.0 and 4.5 hosts; needs foamy-kit (FOAMY_KIT)
+python3 -I tests/runtime.py   # offscreen on the installed 4.5 shell (4.0 only with FOAMY_HOST_40); needs foamy-kit (FOAMY_KIT)
 ```
 
-Shared components live in `kit/`, copied from
-[foamy-kit](https://github.com/foamrider/foamy-kit); change them there and
-run its `sync.sh`. `preview/Preview.qml` holds mock states for the kit's
-screenshot harness.
+The helper is Rust (`native/`, its contract at the top of
+`native/src/main.rs`); the committed binaries are built by foamy-kit and
+must match `native/native.pin`. After changing it (rustup with the toolchain
+in `rust-toolchain.toml`, `file`, and qemu-user binfmt for the aarch64 tests):
+
+```sh
+~/GitHub/Personal/foamy-kit/tools/build-native.sh . --test   # fmt, clippy, cargo tests
+~/GitHub/Personal/foamy-kit/tools/build-native.sh .          # both arches, native.pin
+~/GitHub/Personal/foamy-kit/tools/build-native.sh . --verify # clean rebuild is byte-identical
+```
+
+Run cargo yourself only with `CARGO_TARGET_DIR` outside the plugin (e.g.
+`~/.cache/foamy-native/foamy-audio`): the shell hot-reloads plugin folders.
+The tests only ever run fake `pactl`, `avahi-browse`, `ip` and `pw-record`;
+`/usr/bin/pkexec`, `/usr/bin/ufw` and the RAOP module directory are replaced
+by fakes inside a private user and mount namespace.
+
+`preview/Preview.qml` holds mock states for the kit's screenshot harness.
 
 ## License
 

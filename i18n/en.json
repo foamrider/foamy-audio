@@ -40,6 +40,7 @@
   "Could not stop AirPlay": "Could not stop AirPlay",
   "Could not change output.": "Could not change output.",
   "AirPlay helper returned invalid data": "AirPlay helper returned invalid data",
+  "This plugin's helper isn't available for this CPU.": "This plugin's helper isn't available for this CPU.",
   "AirPlay support is not installed (pipewire-zeroconf)": "AirPlay support is not installed (pipewire-zeroconf)",
   "Choose a local output or AirPlay speakers, not both.": "Choose a local output or AirPlay speakers, not both.",
   "The local output is no longer available.": "The local output is no longer available.",

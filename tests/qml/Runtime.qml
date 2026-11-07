@@ -99,6 +99,12 @@ ShellRoot {
       var view = first.popup.bodyItem
       check(view !== null, "body built on open")
       eq(Audio.AudioService.demanded, true, "open popup raises demand")
+      // Discovery ran the native helper (FoamyNative) and got a JSON reply
+      // (no PipeWire is reachable here, so usually an error from pactl).
+      eq(Audio.AudioService.airplayHelperUnavailable, false, "AirPlay helper available")
+      check(Audio.AudioService.airplayError !== "AirPlay helper returned invalid data",
+        "AirPlay helper replied in JSON: " + Audio.AudioService.airplayScanState + " " + Audio.AudioService.airplayError)
+      console.log("FOAMY AIRPLAY " + Audio.AudioService.airplayScanState + " " + Audio.AudioService.airplayError)
       if (!view) { shell.finish(); return }
       eq(view.cursorKey, "", "no cursor highlight on open")
       view.moveRequested(0, 1)
