@@ -49,6 +49,8 @@ Keyboard: arrows or `hjkl` move the cursor, `h`/`l` change the cursor row's
 volume, Enter or Space activates, `m` mutes the cursor target, `o`/`i`/`a`/`w`
 fold Output, Input, Apps and Wireless, `s` opens Settings, Tab and Shift-Tab
 switch to the next bar panel, Esc closes. Hovering moves the same cursor.
+IPC: `omarchy-shell foamy.audio open|close|toggle|settings|status` (`status`
+prints JSON).
 
 ## Settings
 
@@ -97,7 +99,7 @@ uninstall PipeWire, Avahi or other packages.
 
 ## Development
 
-`kit/` holds shared components copied from [foamy-kit](https://github.com/foamrider/foamy-kit); edit them there, not here.
+`kit/` holds shared components copied from [foamy-kit](https://github.com/foamrider/foamy-kit); edit them there and run its `sync.sh`, not here.
 
 ```sh
 node tests/model.test.js && node tests/preferences.test.js && node tests/i18n.test.cjs
@@ -124,10 +126,7 @@ The tests only ever run fake `pactl`, `avahi-browse`, `ip` and `pw-record`;
 `/usr/bin/pkexec`, `/usr/bin/ufw` and the RAOP module directory are replaced
 by fakes inside a private user and mount namespace.
 
-Shared components live in `kit/`, copied from
-[foamy-kit](https://github.com/foamrider/foamy-kit); change them there and
-run its `sync.sh`. `preview/Preview.qml` holds mock states for the kit's
-screenshot harness.
+`preview/Preview.qml` holds mock states for the kit's screenshot harness.
 
 ## License
 
