@@ -12,8 +12,8 @@ The stock **Super+Ctrl+A** shortcut opens Foamy Audio when enabled. The plugin d
 omarchy plugin add https://github.com/foamrider/foamy-audio.git --enable
 ```
 
-Remove the stock audio widget from the bar when replacing it. Built for
-Omarchy 4.5; it also loads on Omarchy 4.0.
+Remove the stock audio widget from the bar when replacing it. Requires
+Omarchy 4.5.
 
 Requires PipeWire (with `pipewire-pulse` for `pactl`). AirPlay, the firewall
 check and the microphone meter for non-stereo inputs run a bundled static
@@ -81,8 +81,7 @@ captures passively, so opening the panel does not wake the microphone and
 disturb the playback clock.
 
 Language follows **Omarchy → Setup → Language** on Omarchy 4.5 (English and
-Norwegian catalogs; right-to-left languages mirror the panel). Omarchy 4.0
-shows English.
+Norwegian catalogs; right-to-left languages mirror the panel).
 
 ## Remove
 
