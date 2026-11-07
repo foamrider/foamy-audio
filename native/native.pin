@@ -5,7 +5,7 @@
 crate native
 binary foamy-audio-helper
 toolchain 1.99.1
-kit 0.5.0
-source 9ae83f6eab374cc2f6d26ca0c92ad2303cb1b00c2eac388f709bb376f211a3a6
+kit 0.5.2
+source a1f035b4978f308df8879886acb7765005f3f484411c51d1033790386b8cf96c
 45a7122b1b012bdb273794be6be94c680331ef239d8325c760cbd5b83bf85145  bin/aarch64/foamy-audio-helper
 f6ea0cb187edbc616e791b9e6d34dcf85ca17aa6cbc791e16a9ec73539dd1163  bin/x86_64/foamy-audio-helper
