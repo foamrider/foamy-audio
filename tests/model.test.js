@@ -127,3 +127,12 @@ test("shell level meters and untyped sources", () => {
   assert.equal(Model.isUntypedSource({ name: "easyeffects_source", isSink: true }, availability), false)
   assert.equal(Model.isUntypedSource({ name: "other", isSink: false, isStream: false }, availability), false)
 })
+
+test("MPRIS matching takes Quickshell's list wrappers, not only Arrays", () => {
+  const player = { identity: "Spotify", desktopEntry: "spotify", isPlaying: true, canPlay: true }
+  const label = Model.mprisLabelsFor([player], () => true)
+  assert.notEqual(label, "")
+  // Mpris.players.values is a sequence wrapper: Array.isArray is false.
+  assert.equal(Model.mprisLabelsFor({ length: 1, 0: player }, () => true), label)
+  assert.equal(Model.mprisLabelsFor(null, () => true), "")
+})
