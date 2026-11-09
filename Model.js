@@ -290,8 +290,14 @@ function streamRepresentsMprisPlayer(streamLabel, playerLabel) {
     || playerKey.indexOf(streamKey) !== -1
 }
 
+// Quickshell lists (Mpris.players.values, Pipewire.nodes.values) are
+// sequence wrappers, not Arrays: Array.isArray is false for them.
+function listOf(value) {
+  return value !== null && typeof value === "object" && typeof value.length === "number" ? value : []
+}
+
 function mprisLabelsFor(players, predicate) {
-  var values = Array.isArray(players) ? players : []
+  var values = listOf(players)
   var playingCandidates = []
   var candidates = []
   var playingProxyCandidates = []
@@ -332,7 +338,7 @@ function unmatchedMprisStreamLabel(label, players, streams) {
   if (!streamLabelIsGeneric(label)) return ""
 
   return mprisLabelsFor(players, function(playerLabel) {
-    var values = Array.isArray(streams) ? streams : []
+    var values = listOf(streams)
     for (var i = 0; i < values.length; i++) {
       var stream = values[i]
       var streamLabel = rawStreamLabel(stream)
