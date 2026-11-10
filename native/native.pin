@@ -1,11 +1,11 @@
-# native.pin: written by foamy-kit tools/build-native.sh; do not edit.
+# native.pin: written by kit/native/build-native.sh; do not edit.
 # check.sh and tests/kit-check.sh verify bin/<arch>/<binary> against it and
 # report the binaries stale when `source` no longer matches the crate, kit/rust,
-# Cargo.toml, Cargo.lock and rust-toolchain.toml. Rebuild: foamy-kit tools/build-native.sh <plugin>.
+# Cargo.toml, Cargo.lock and rust-toolchain.toml. Rebuild: kit/native/build-native.sh .
 crate native
 binary foamy-audio-helper
 toolchain 1.99.1
-kit 0.5.2
-source a1f035b4978f308df8879886acb7765005f3f484411c51d1033790386b8cf96c
-45a7122b1b012bdb273794be6be94c680331ef239d8325c760cbd5b83bf85145  bin/aarch64/foamy-audio-helper
-f6ea0cb187edbc616e791b9e6d34dcf85ca17aa6cbc791e16a9ec73539dd1163  bin/x86_64/foamy-audio-helper
+kit 0.7.0
+source 2663d13c7d50190dca37967a16ce49ba093a5bbf5cb5e3a81075dbfcfcf0e976
+dde8ae46ff0b4b8e87ec06ec31fa5e40fa550f7d2c1e6330191bf2d3e91fd252  bin/aarch64/foamy-audio-helper
+d2c37f361e728f43b3fff5041bb3fc8b7cb03189013f120db7cadfa03e76d4c9  bin/x86_64/foamy-audio-helper
