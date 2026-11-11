@@ -165,6 +165,40 @@ ShellRoot {
       eq(Audio.AudioService.demanded, false, "closing releases demand")
       eq(Audio.AudioService.wanted, false, "discovery released after the delay")
       eq(panels.itemAt(0).displayAudioSinks.length, 0, "rows dropped while closed")
+      shell.floodMeter()
+    }
+  }
+
+  // The microphone meter's helper runs as long as the popup is open: a helper
+  // (or pw-record) that floods stderr must not grow the shell. Its Process
+  // gets a 32 MiB stderr writer; only the first stderrLimit characters stay.
+  property var meter: null
+  property var meterProc: null
+  function floodMeter() {
+    meter = findType(panels.itemAt(0), function(item) { return item.stderrLimit !== undefined && item.fallbackPeak !== undefined })
+    check(meter !== null, "microphone meter found")
+    var kids = meter ? meter.resources : []
+    for (var i = 0; i < kids.length; i++)
+      if (kids[i] && kids[i].command !== undefined && kids[i].running !== undefined) meterProc = kids[i]
+    check(meterProc !== null, "meter process found")
+    if (!meter || !meterProc) { shell.finish(); return }
+    eq(meterProc.running, false, "meter idle while closed")
+    meterProc.command = ["bash", "-c", "head -c 33554432 /dev/zero | tr '\\0' x >&2; exit 3"]
+    meterProc.running = true
+    floodWait.start()
+  }
+  Timer {
+    id: floodWait
+    interval: 100
+    repeat: true
+    property int ticks: 0
+    onTriggered: {
+      if (shell.meterProc.running && ++ticks < 300) return
+      stop()
+      eq(shell.meterProc.running, false, "flooding helper drained and exited")
+      eq(shell.meter.stderrHead.length, shell.meter.stderrLimit, "meter keeps only the head of a stderr flood")
+      eq(shell.meter.stderrHead.replace(/x/g, ""), "", "kept head is the helper's output")
+      eq(shell.meter.failure, "", "a closed meter reports no failure")
       shell.finish()
     }
   }
