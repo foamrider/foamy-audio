@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "foamy.audio",
   "name": "Foamy Audio",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "author": "foamrider",
   "description": "Audio outputs, microphones, per-app volumes and AirPlay",
   "kinds": [
