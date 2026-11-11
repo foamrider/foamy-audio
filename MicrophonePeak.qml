@@ -32,6 +32,14 @@ Item {
   property bool stopping: false
   // No helper for this CPU (exit 126/127): the meter says so and never relaunches.
   property bool helperUnavailable: false
+  // The start of the running helper's stderr, for the log; the meter runs for
+  // as long as the popup is open, so nothing past stderrLimit is kept.
+  readonly property int stderrLimit: 4096
+  property string stderrHead: ""
+
+  function keepStderr(data) {
+    if (stderrHead.length < stderrLimit) stderrHead += String(data).slice(0, stderrLimit - stderrHead.length)
+  }
 
   onRequestedKeyChanged: {
     fallbackPeak = 0
@@ -51,6 +59,7 @@ Item {
     if (!requestedKey || requestedKey === failedKey || helperUnavailable) return
     launchedKey = requestedKey
     stopping = false
+    stderrHead = ""
     var args = ["microphone-peak", source.name, channelMap]
     if (passive) args.push("--passive")
     capture.command = FoamyNative.command(FoamyNative.localPath(Qt.resolvedUrl(".")), "foamy-audio-helper", args)
@@ -72,7 +81,11 @@ Item {
           root.fallbackPeak = level
       }
     }
-    stderr: StdioCollector { id: captureError }
+    // Chunks as they arrive (no split), so only stderrLimit is ever kept.
+    stderr: SplitParser {
+      splitMarker: ""
+      onRead: function(data) { root.keepStderr(data) }
+    }
     onExited: function(exitCode) {
       root.fallbackPeak = 0
       if (FoamyNative.unavailable(exitCode)) {
@@ -84,7 +97,7 @@ Item {
         // Retry on reopen or device change, never spin on a missing or failed helper.
         root.failedKey = root.launchedKey
         root.failure = "Microphone level unavailable"
-        console.warn("Foamy Audio microphone meter: " + captureError.text.trim())
+        console.warn("Foamy Audio microphone meter: " + root.stderrHead.trim())
       }
       reconcile.restart()
     }

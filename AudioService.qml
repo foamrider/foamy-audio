@@ -231,17 +231,24 @@ Singleton {
     onTriggered: root.resolveVolumeSink()
   }
 
+  // The pactl calls behind these scripts get a deadline: a wedged
+  // pipewire-pulse must not hold the process (and every later run) forever.
+  // `timeout` signals its whole process group, so pactl goes too.
+  readonly property var pactlDeadline: ["timeout", "--kill-after=1s", "5s"]
+
   Process {
     id: volumeSinkProc
-    command: ["omarchy-audio-output-sink"]
+    command: root.pactlDeadline.concat(["omarchy-audio-output-sink"])
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: if (root.volumeSinkRequest === root.volumeSinkGeneration) root.volumeSinkName = String(text).trim()
     }
-    onExited: {
-      if (!root.volumeSinkStale) return
+    // The one end of a run: exited, timed out, or never started (then
+    // Quickshell emits no exited(), only running -> false).
+    onRunningChanged: {
+      if (running || !root.volumeSinkStale) return
       root.volumeSinkStale = false
-      // Deferred: the process still reports running while it signals exit.
+      // Deferred: out of the process's own signal handler.
       Qt.callLater(root.resolveVolumeSink)
     }
   }
@@ -312,7 +319,7 @@ Singleton {
 
   Process {
     id: sinkAvailabilityProc
-    command: ["omarchy-audio-sink-availability"]
+    command: root.pactlDeadline.concat(["omarchy-audio-sink-availability"])
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -324,7 +331,7 @@ Singleton {
 
   Process {
     id: sourceAvailabilityProc
-    command: ["omarchy-audio-sink-availability", "sources"]
+    command: root.pactlDeadline.concat(["omarchy-audio-sink-availability", "sources"])
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.sourceAvailability = Model.parseSinkAvailability(text)
