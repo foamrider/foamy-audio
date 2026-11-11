@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell.Io
 import Quickshell.Services.Pipewire
+import "Model.js" as Model
 import "kit/FoamyNative.js" as FoamyNative
 
 Item {
@@ -60,9 +61,8 @@ Item {
     launchedKey = requestedKey
     stopping = false
     stderrHead = ""
-    var args = ["microphone-peak", source.name, channelMap]
-    if (passive) args.push("--passive")
-    capture.command = FoamyNative.command(FoamyNative.localPath(Qt.resolvedUrl(".")), "foamy-audio-helper", args)
+    capture.command = FoamyNative.command(FoamyNative.localPath(Qt.resolvedUrl(".")), "foamy-audio-helper",
+      Model.microphonePeakArgs(source.name, channelMap, passive))
     capture.running = true
   }
 

@@ -62,6 +62,15 @@ function isUntypedSource(node, sourceAvailability) {
   return name !== "" && !!sourceAvailability && Object.prototype.hasOwnProperty.call(sourceAvailability, name)
 }
 
+// The meter helper's argv after its tool name. A PipeWire node name is chosen
+// by whichever client created the node and may start with "-"; after "--" the
+// helper takes it as the capture target, never as one of its own options.
+function microphonePeakArgs(target, channelMap, passive) {
+  var args = ["microphone-peak"]
+  if (passive) args.push("--passive")
+  return args.concat(["--", String(target), String(channelMap)])
+}
+
 function parseSinkAvailability(raw) {
   var next = {}
   var lines = String(raw || "").split("\n")
@@ -366,6 +375,7 @@ if (typeof module !== "undefined") {
     nodeFor: nodeFor,
     isShellLevelMeter: isShellLevelMeter,
     isUntypedSource: isUntypedSource,
+    microphonePeakArgs: microphonePeakArgs,
     parseSinkAvailability: parseSinkAvailability,
     friendlyDeviceLabel: friendlyDeviceLabel,
     nodeProps: nodeProps,

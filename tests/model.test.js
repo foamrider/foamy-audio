@@ -136,3 +136,31 @@ test("MPRIS matching takes Quickshell's list wrappers, not only Arrays", () => {
   assert.equal(Model.mprisLabelsFor({ length: 1, 0: player }, () => true), label)
   assert.equal(Model.mprisLabelsFor(null, () => true), "")
 })
+
+test("the meter reaches pw-record with any node name, a leading dash too", () => {
+  // The real helper (FoamyNative's bash launch) with a fake pw-record on a
+  // PATH that holds nothing else, so no microphone is opened.
+  const fs = require("node:fs")
+  const os = require("node:os")
+  const path = require("node:path")
+  const { spawnSync } = require("node:child_process")
+  const FoamyNative = require("../kit/node-loader.cjs").load("FoamyNative")
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-audio-meter-argv-"))
+  try {
+    const log = path.join(dir, "argv.json")
+    fs.writeFileSync(path.join(dir, "pw-record"),
+      "#!/bin/bash\nprintf '%s\\0' \"$@\" > " + JSON.stringify(log) + "\nexit 1\n", { mode: 0o755 })
+    for (const [name, passive] of [["--help", false], ["-mic", true], ["alsa_input.usb mic", false]]) {
+      fs.rmSync(log, { force: true })
+      const argv = FoamyNative.command(path.join(__dirname, ".."), "foamy-audio-helper",
+        Model.microphonePeakArgs(name, "MONO", passive))
+      const result = spawnSync("/bin/bash", argv.slice(1), { env: { PATH: dir }, encoding: "utf8", timeout: 10000 })
+      assert.equal(result.status, 1, name + ": " + result.stderr)
+      const seen = fs.readFileSync(log, "utf8").split("\0").slice(0, -1)
+      assert.equal(seen[seen.indexOf("--target") + 1], name)
+      assert.equal(seen.some(arg => arg.includes("node.passive=true")), passive, name)
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
