@@ -4,6 +4,14 @@ with the foamy-kit harness: isolated HOME/XDG/runtime dirs, no Wayland or
 Hyprland, no PipeWire or Pulse reachable. Checks tests/qml/Runtime.qml plus
 `qs ipc call foamy.audio status` answered by the leader.
 
+The audio tools the plugin and the host shell run (pactl, avahi-browse,
+pw-record, pw-link, wpctl and the omarchy-audio-* scripts) are logging fakes
+that fail like an unreachable server; Omarchy's bin directories are dropped
+from PATH, PULSE_SERVER and PIPEWIRE_REMOTE point nowhere, and an AppImage's
+LD_LIBRARY_PATH ($APPDIR) is dropped. So the live PipeWire graph, its modules
+and the microphone stay out of reach even when the caller's environment names
+a server.
+
 FOAMY_KIT (default ~/GitHub/Personal/foamy-kit) provides the harness.
 The host is Omarchy 4.5: FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else
 the installed /usr/share/omarchy/shell. A 4.0 case runs only when FOAMY_HOST_40
@@ -29,6 +37,30 @@ sys.path.insert(0, str(KIT / "preview"))
 import harness  # noqa: E402
 
 
+# Fails like pactl and friends without a server; the AirPlay helper reports
+# the last stderr line, which Runtime.qml checks (FAKE_ERROR).
+FAKE_ERROR = "fake audio tool: no server in tests"
+FAKE = f"""#!/bin/sh
+printf '%s\\n' "${{0##*/}} $*" >> "$FOAMY_OUT/calls.log"
+echo "{FAKE_ERROR}" >&2
+exit 1
+"""
+FAKES = ("pactl", "avahi-browse", "pw-record", "pw-link", "wpctl", "omarchy-audio-output-sink",
+         "omarchy-audio-sink-availability", "omarchy-audio-tuning", "omarchy-audio-output-set-default",
+         "omarchy-audio-input-set-default")
+
+
+def isolate(env, host):
+    """Drops Omarchy's bin directories and an AppImage's libraries; no audio server is named."""
+    bins = {os.path.realpath("/usr/share/omarchy/bin"), os.path.realpath(Path(host).parent / "bin")}
+    env["PATH"] = ":".join(p for p in env["PATH"].split(":") if p and os.path.realpath(p) not in bins)
+    appdir = os.environ.get("APPDIR", "").rstrip("/")
+    env["LD_LIBRARY_PATH"] = ":".join(p for p in env.get("LD_LIBRARY_PATH", "").split(":")
+                                      if p and not (appdir and (p == appdir or p.startswith(appdir + "/"))))
+    env.update(PULSE_SERVER=f"unix:{env['XDG_RUNTIME_DIR']}/no-pulse", PIPEWIRE_REMOTE="no-pipewire",
+               FOAMY_FAKE_ERROR=FAKE_ERROR)
+
+
 def ipc_status(run):
     by_id = Path(run.env["XDG_RUNTIME_DIR"]) / "quickshell/by-id"
     for _ in range(100):
@@ -45,8 +77,10 @@ def ipc_status(run):
 
 def run(host, lang):
     shell = (PLUGIN / "tests/qml/Runtime.qml").read_text()
-    r = harness.Run(host, shell, plugin=PLUGIN, language=lang, prefix=f"foamy-audio-runtime-{host}-{lang}-")
+    r = harness.Run(host, shell, plugin=PLUGIN, language=lang, prefix=f"foamy-audio-runtime-{host}-{lang}-",
+                    fakebin={name: FAKE for name in FAKES})
     r.env.update(FOAMY_LANG=lang, FOAMY_HOLD_MS="3000")
+    isolate(r.env, r.host)
     log_path = r.base / "qs.log"
     process = subprocess.Popen(["qs", "-p", str(r.root), "--no-color"], env=r.env, stdout=log_path.open("w"),
                                stderr=subprocess.STDOUT, start_new_session=True)
@@ -63,6 +97,11 @@ def run(host, lang):
         leader = status is not None and json.loads(status).get("leader") is True
     except ValueError:
         leader = False
+    # The AirPlay helper ran pactl, and it was the fake.
+    calls_log = r.out / "calls.log"
+    calls = calls_log.read_text().splitlines() if calls_log.exists() else []
+    if "pactl list modules short" not in calls:
+        failures.append(f"FOAMY FAIL the fake pactl never ran: {calls}")
     ok = "FOAMY DONE" in log and not failures and leader
     print(f"{'PASS' if ok else 'FAIL'} runtime {host} {lang}: {result}; ipc status from leader: {leader}")
     if not ok:

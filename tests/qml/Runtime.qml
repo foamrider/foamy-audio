@@ -165,6 +165,23 @@ ShellRoot {
       eq(Audio.AudioService.demanded, false, "closing releases demand")
       eq(Audio.AudioService.wanted, false, "discovery released after the delay")
       eq(panels.itemAt(0).displayAudioSinks.length, 0, "rows dropped while closed")
+      airplayWait.start()
+    }
+  }
+
+  // tests/runtime.py puts fakes in front of pactl and the other audio tools:
+  // the discovery the popup started must have failed on the fake (the last
+  // line of its stderr), never on a real pactl reaching a server.
+  Timer {
+    id: airplayWait
+    interval: 100
+    repeat: true
+    property int ticks: 0
+    onTriggered: {
+      if (Audio.AudioService.airplayScanning && ++ticks < 300) return
+      stop()
+      eq(Audio.AudioService.airplayScanState, "error", "discovery failed without an audio server")
+      eq(Audio.AudioService.airplayError, Quickshell.env("FOAMY_FAKE_ERROR"), "discovery ran the fake pactl")
       shell.floodMeter()
     }
   }
