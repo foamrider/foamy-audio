@@ -302,7 +302,7 @@ Singleton {
     if (!node) return
     Pipewire.preferredDefaultAudioSource = node
     if (node.id !== undefined && node.name)
-      Quickshell.execDetached(["omarchy-audio-input-set-default", String(node.id), String(node.name)])
+      Quickshell.execDetached(Model.inputDefaultCommand(node.id, node.name))
   }
 
   // ---- Availability (only while a popup is open) -------------------------

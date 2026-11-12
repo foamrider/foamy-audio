@@ -64,6 +64,14 @@ function microphonePeakArgs(target, channelMap, passive) {
   return args.concat(["--", String(target), String(channelMap)])
 }
 
+// `omarchy-audio-input-set-default <id> <name>`, run detached. The host
+// script runs wpctl and pactl with no deadline of its own, so a wedged
+// pipewire-pulse would leave one hung script (and its children) per click.
+// `timeout` signals its whole process group: 10 s, then SIGKILL 1 s later.
+function inputDefaultCommand(id, name) {
+  return ["timeout", "--kill-after=1s", "10s", "omarchy-audio-input-set-default", String(id), String(name)]
+}
+
 function parseSinkAvailability(raw) {
   var next = {}
   var lines = String(raw || "").split("\n")
@@ -368,6 +376,7 @@ if (typeof module !== "undefined") {
     nodeFor: nodeFor,
     isUntypedSource: isUntypedSource,
     microphonePeakArgs: microphonePeakArgs,
+    inputDefaultCommand: inputDefaultCommand,
     parseSinkAvailability: parseSinkAvailability,
     friendlyDeviceLabel: friendlyDeviceLabel,
     nodeProps: nodeProps,

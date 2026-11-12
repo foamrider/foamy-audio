@@ -161,3 +161,29 @@ test("the meter reaches pw-record with any node name, a leading dash too", () =>
     fs.rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test("a hung input switch ends at its deadline", () => {
+  // A fake omarchy-audio-input-set-default that ignores SIGTERM and never
+  // returns, like the host script stuck on a wedged pipewire-pulse.
+  const fs = require("node:fs")
+  const os = require("node:os")
+  const path = require("node:path")
+  const { spawnSync } = require("node:child_process")
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-audio-input-switch-"))
+  try {
+    const log = path.join(dir, "argv")
+    fs.writeFileSync(path.join(dir, "omarchy-audio-input-set-default"),
+      "#!/bin/bash\nprintf '%s\\0' \"$@\" > " + JSON.stringify(log) + "\ntrap '' TERM\nexec sleep 60\n", { mode: 0o755 })
+    const argv = Model.inputDefaultCommand(57, "-usb mic")
+    const started = Date.now()
+    const result = spawnSync(argv[0], argv.slice(1), { env: { PATH: dir + ":/usr/bin:/bin" }, encoding: "utf8", timeout: 20000, killSignal: "SIGKILL" })
+    const elapsed = Date.now() - started
+    assert.equal(result.error, undefined, "the switch ended on its own deadline")
+    // timeout's SIGKILL goes to its whole process group, itself included.
+    assert.equal(result.signal, "SIGKILL", "SIGKILL after the ignored SIGTERM")
+    assert.ok(elapsed >= 10000 && elapsed < 18000, "ended after " + elapsed + " ms")
+    assert.deepEqual(fs.readFileSync(log, "utf8").split("\0").slice(0, -1), ["57", "-usb mic"])
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
