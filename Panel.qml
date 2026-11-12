@@ -9,6 +9,7 @@ import "kit"
 import "Model.js" as Model
 import "Preferences.js" as Schema
 import "kit/FoamyNative.js" as FoamyNative
+import "kit/FoamyText.js" as FoamyText
 
 // The bar widget (one per monitor on 4.5). Shared state lives in the
 // AudioService singleton; this file owns the bar button, the popup with its
@@ -111,6 +112,9 @@ Panel {
     var label = Model.airplayRoomLabel(node)
     return label === "AirPlay speaker" ? FoamyI18n.t(label) : label
   }
+  // The output label is the device's or AirPlay speaker's own name (driver,
+  // mDNS), and the host bar tooltip has no size limit of its own.
+  function barTooltip(label) { return FoamyText.tooltip(FoamyI18n.t("Audio") + (label ? " · " + label : "")) }
   function streamLabel(node) { return Model.streamLabel(node, AudioService.mprisPlayers, AudioService.audioStreams) }
   function rowLabel(kind, node) {
     if (!node) return ""
@@ -315,7 +319,7 @@ Panel {
     fixedWidth: root.vertical ? -1 : Math.max(Style.bar.iconSlot,
       barContent.implicitWidth + Style.bar.iconSlot - Style.bar.iconCanvas)
     dimmed: root.outputMuted
-    tooltipText: FoamyI18n.t("Audio") + (root.outputLabel ? " · " + root.outputLabel : "")
+    tooltipText: root.barTooltip(root.outputLabel)
     Row {
       id: barContent
       anchors.centerIn: parent

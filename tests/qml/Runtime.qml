@@ -86,6 +86,15 @@ ShellRoot {
     // No PipeWire offscreen: the bar shows the no-output glyph, never an empty button.
     eq(first.barGlyph(), "\ueee8", "bar glyph without an output")
     eq(first.popup.bodyItem, null, "popup body is lazy")
+    // The bar tooltip carries the output's own name: bounded like FoamyText.tooltip.
+    var button = findType(first, function(item) { return item.tooltipText !== undefined && item.labelVisible !== undefined })
+    check(button !== null, "bar button found")
+    if (button) eq(button.tooltipText, first.barTooltip(""), "bar tooltip without an output")
+    var long = first.barTooltip("Speaker ".repeat(40) + "\n1\n2\n3\n4\n5\n6\n7")
+    var lines = long.split("\n")
+    eq(lines.length, 6, "a long output name keeps at most six tooltip lines")
+    check(lines.every(function(line) { return line.length <= 100 }), "tooltip lines stay within 100 characters: " + JSON.stringify(long))
+    check(long.indexOf("…") > 0, "a cut tooltip shows the ellipsis")
     eq(Audio.AudioService.demanded, false, "no demand while closed")
     first.open()
     wait.waitFor(function() { return first.popup.bodyItem !== null }, 10000, stepTwo, "body built on open")
