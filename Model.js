@@ -47,15 +47,8 @@ function nodeFor(row, nodes) {
   return null
 }
 
-// The shell's own level meter (Quickshell's peak monitor stream). 4.5 has
-// AudioNodes.isShellLevelMeter; this is the same rule for 4.0.
-function isShellLevelMeter(name) {
-  var value = String(name || "")
-  return value === "quickshell" || value === "quickshell-peak-monitor"
-}
-
 // A virtual source (Audio/Source/Virtual) has no PwNode.audio in Quickshell;
-// `omarchy-audio-sink-availability sources` (4.5) still lists it.
+// `omarchy-audio-sink-availability sources` still lists it.
 function isUntypedSource(node, sourceAvailability) {
   if (!node || node.audio || node.isStream || node.isSink) return false
   var name = String(node.name || "")
@@ -373,7 +366,6 @@ if (typeof module !== "undefined") {
     nodeRow: nodeRow,
     rowSnapshot: rowSnapshot,
     nodeFor: nodeFor,
-    isShellLevelMeter: isShellLevelMeter,
     isUntypedSource: isUntypedSource,
     microphonePeakArgs: microphonePeakArgs,
     parseSinkAvailability: parseSinkAvailability,

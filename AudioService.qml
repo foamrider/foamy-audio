@@ -6,13 +6,14 @@ import Quickshell.Bluetooth
 import Quickshell.Io
 import Quickshell.Services.Mpris
 import Quickshell.Services.Pipewire
+import qs.Commons
 import "kit"
 import "Model.js" as Model
 import "kit/FoamyNative.js" as FoamyNative
 
 // Audio state shared by every Foamy Audio bar instance (4.5 draws one bar per
 // monitor): the PipeWire device model, the volume sink behind any DSP sink,
-// 4.5 platform node hiding and untyped inputs, and the AirPlay discovery
+// platform node hiding and untyped inputs, and the AirPlay discovery
 // session. Panels join FoamyMember scope "audio"; an open popup raises demand,
 // which is what starts AirPlay discovery and the availability refresh.
 Singleton {
@@ -24,9 +25,9 @@ Singleton {
   // monitors or panels does not stop and restart discovery.
   property bool wanted: false
 
-  // 4.5 Commons singletons, resolved at runtime so 4.0 still loads the plugin.
-  property var platform: null   // AudioNodes: platformHides(), isShellLevelMeter()
-  property var untyped: null    // UntypedInput: wpctl volume/mute for a virtual default input
+  // The host's Commons singletons.
+  readonly property var platform: AudioNodes   // platformHides(), isShellLevelMeter()
+  readonly property var untyped: UntypedInput  // wpctl volume/mute for a virtual default input
 
   // AirPlay runs the native helper, bin/<arch>/foamy-audio-helper airplay ….
   readonly property string pluginDir: FoamyNative.localPath(Qt.resolvedUrl("."))
@@ -60,14 +61,14 @@ Singleton {
   }
 
   // Nodes of a platform's audio processing (4.5 /usr/share/omarchy-platform/audio.json)
-  // are neither devices nor apps. Most machines, and every 4.0 host, have none.
+  // are neither devices nor apps. Most machines have none.
   function platformHides(node) {
-    return !!node && !!platform && platform.platformHides(node.name, nodeNames)
+    return !!node && platform.platformHides(node.name, nodeNames)
   }
 
   function isShellLevelMeter(node) {
     var name = node ? node.name : ""
-    return platform ? platform.isShellLevelMeter(name) : Model.isShellLevelMeter(name)
+    return platform.isShellLevelMeter(name)
   }
 
   readonly property var candidateSinks: {
@@ -254,9 +255,9 @@ Singleton {
   }
 
   // ---- Levels --------------------------------------------------------------
-  // A virtual default input has no PwNode.audio; on 4.5 its volume and mute
-  // go through UntypedInput (wpctl), once for the whole shell.
-  readonly property bool inputViaWpctl: !!untyped && untyped.active === true
+  // A virtual default input has no PwNode.audio; its volume and mute go
+  // through UntypedInput (wpctl), once for the whole shell.
+  readonly property bool inputViaWpctl: untyped.active === true
   readonly property real outputVolume: volumeSink && volumeSink.audio ? volumeSink.audio.volume : 0
   readonly property bool outputMuted: volumeSink && volumeSink.audio ? volumeSink.audio.muted : false
   readonly property real inputVolume: inputViaWpctl ? untyped.volume : (source && source.audio ? source.audio.volume : 0)
@@ -312,8 +313,7 @@ Singleton {
     triggeredOnStart: true
     onTriggered: {
       if (!sinkAvailabilityProc.running) sinkAvailabilityProc.running = true
-      // `sources` exists on 4.5 only, together with UntypedInput.
-      if (root.untyped && !sourceAvailabilityProc.running) sourceAvailabilityProc.running = true
+      if (!sourceAvailabilityProc.running) sourceAvailabilityProc.running = true
     }
   }
 
@@ -603,19 +603,6 @@ Singleton {
   }
 
   Component.onCompleted: {
-    try {
-      var probe = Qt.createQmlObject('import QtQuick; import qs.Commons; QtObject {'
-        + ' function nodes() { return typeof AudioNodes === "undefined" ? null : AudioNodes }'
-        + ' function untyped() { return typeof UntypedInput === "undefined" ? null : UntypedInput } }',
-        root, "FoamyAudioPlatformProbe")
-      var nodesApi = probe.nodes()
-      var untypedApi = probe.untyped()
-      probe.destroy()
-      if (nodesApi && typeof nodesApi.platformHides === "function") platform = nodesApi
-      if (untypedApi && typeof untypedApi.setVolume === "function") untyped = untypedApi
-    } catch (error) {
-      // 4.0: no platform hints, no untyped inputs; the built-in filters apply.
-    }
     resolveVolumeSink()
     airplayStatusProc.running = true
   }

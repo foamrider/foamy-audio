@@ -7,14 +7,13 @@ import "plugin" as Audio
 import "plugin/kit"
 
 // Foamy Audio under a real host shell, offscreen: three bar instances (as on
-// three monitors), one leader, the 4.5 platform helpers resolved at runtime
-// (null on 4.0), the lazy popup body, the single keyboard cursor, settings
+// three monitors), one leader, the host's platform helpers, the lazy popup
+// body, the single keyboard cursor, settings
 // saving through the bar, translations and RTL mirroring.
 ShellRoot {
   id: shell
   readonly property string host: Quickshell.env("FOAMY_HOST")
   readonly property string lang: Quickshell.env("FOAMY_LANG") || "en"
-  readonly property bool v45: host === "4.5"
   property int checks: 0
   property int failures: 0
 
@@ -51,7 +50,7 @@ ShellRoot {
 
   Component.onCompleted: Qt.callLater(stepOne)
 
-  // The host's textKey arity (4.0 text, 4.5 text + modifiers) via the kit.
+  // The host's textKey call via the kit.
   FoamyCursor { id: keys }
   function key(view, text) { keys.emitTextKey(view, text) }
   function findNamed(item, name) {
@@ -78,8 +77,8 @@ ShellRoot {
   function stepOne() {
     eq(leaders(), 1, "one leader across three bar instances")
     eq(Audio.AudioService.members, 3, "three members")
-    eq(!!Audio.AudioService.platform, v45, "AudioNodes resolved only on 4.5")
-    eq(!!Audio.AudioService.untyped, v45, "UntypedInput resolved only on 4.5")
+    eq(Audio.AudioService.platform, AudioNodes, "the host's AudioNodes")
+    eq(Audio.AudioService.untyped, UntypedInput, "the host's UntypedInput")
     check(Audio.AudioService.isShellLevelMeter({ name: "quickshell-peak-monitor" }), "shell level meter filtered")
     eq(Audio.AudioService.platformHides({ name: "alsa_output.speakers" }), false, "no platform hints here")
     var first = panels.itemAt(0)

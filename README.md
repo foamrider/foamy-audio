@@ -41,7 +41,7 @@ Optional:
 - The bar volume and mute follow the physical output behind a speaker tuning
   or EasyEffects, the same sink the volume keys use. It is re-resolved when
   the output, the PipeWire graph or EasyEffects' output changes; nothing polls.
-- On Omarchy 4.5, nodes a platform's audio processing adds are hidden, and a
+- Nodes a platform's audio processing adds are hidden, and a
   virtual default input (EasyEffects, a platform microphone mapping) gets
   volume and mute through `wpctl`, like the stock panel.
 
@@ -157,7 +157,7 @@ node tests/model.test.js && node tests/preferences.test.js && node tests/i18n.te
 python3 -I -m unittest discover -s tests -p 'test_*.py'   # the helper as a process, fake tools (tests/blackbox.py)
 FOAMY_HELPER='["bin/aarch64/foamy-audio-helper"]' python3 -I -m unittest discover -s tests -p 'test_*.py'   # via qemu binfmt
 bash tests/kit-check.sh
-python3 -I tests/runtime.py   # offscreen on the installed 4.5 shell (4.0 only with FOAMY_HOST_40); needs foamy-kit (FOAMY_KIT)
+python3 -I tests/runtime.py   # offscreen on the installed 4.5 shell; needs foamy-kit (FOAMY_KIT)
 ```
 
 The helper is Rust (`native/`, its contract at the top of

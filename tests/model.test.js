@@ -117,10 +117,7 @@ test("repeater rows hold primitives and resolve to the live node", () => {
   assert.equal(Model.nodeFor(null, live), null)
 })
 
-test("shell level meters and untyped sources", () => {
-  assert.equal(Model.isShellLevelMeter("quickshell"), true)
-  assert.equal(Model.isShellLevelMeter("quickshell-peak-monitor"), true)
-  assert.equal(Model.isShellLevelMeter("alsa_input.mic"), false)
+test("untyped sources", () => {
   const availability = { "easyeffects_source": true }
   assert.equal(Model.isUntypedSource({ name: "easyeffects_source", audio: null, isSink: false, isStream: false }, availability), true)
   assert.equal(Model.isUntypedSource({ name: "easyeffects_source", audio: {}, isSink: false, isStream: false }, availability), false)
