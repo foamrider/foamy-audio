@@ -154,6 +154,9 @@ uninstall PipeWire, Avahi or other packages.
 `kit/` holds shared components copied from [foamy-kit](https://github.com/foamrider/foamy-kit); edit them there and run its `sync.sh`, not here.
 
 ```sh
+mise install                  # once: the pinned linters and formatters (mise.toml)
+tests/validate.sh             # every check, then tests/suite.sh; --ci, --fast, --list
+tests/suite.sh                # the tests alone (--ci: node and helper only; --fast: no Quickshell)
 node tests/model.test.js && node tests/preferences.test.js && node tests/i18n.test.cjs
 python3 -I -m unittest discover -s tests -p 'test_*.py'   # the helper as a process, fake tools (tests/blackbox.py)
 FOAMY_HELPER='["bin/aarch64/foamy-audio-helper"]' python3 -I -m unittest discover -s tests -p 'test_*.py'   # via qemu binfmt
