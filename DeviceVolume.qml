@@ -31,7 +31,8 @@ Item {
     to: root.maximum
     stepSize: root.step
     value: root.available ? root.volume : 0
-    onMoved: if (root.available) root.moved(value)
+    onMoved: if (root.available)
+      root.moved(value)
   }
   Text {
     id: percent

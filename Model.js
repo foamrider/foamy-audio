@@ -47,19 +47,29 @@ function nodeFor(row, nodes) {
   return null
 }
 
-// The shell's own level meter (Quickshell's peak monitor stream). 4.5 has
-// AudioNodes.isShellLevelMeter; this is the same rule for 4.0.
-function isShellLevelMeter(name) {
-  var value = String(name || "")
-  return value === "quickshell" || value === "quickshell-peak-monitor"
-}
-
 // A virtual source (Audio/Source/Virtual) has no PwNode.audio in Quickshell;
-// `omarchy-audio-sink-availability sources` (4.5) still lists it.
+// `omarchy-audio-sink-availability sources` still lists it.
 function isUntypedSource(node, sourceAvailability) {
   if (!node || node.audio || node.isStream || node.isSink) return false
   var name = String(node.name || "")
   return name !== "" && !!sourceAvailability && Object.prototype.hasOwnProperty.call(sourceAvailability, name)
+}
+
+// The meter helper's argv after its tool name. A PipeWire node name is chosen
+// by whichever client created the node and may start with "-"; after "--" the
+// helper takes it as the capture target, never as one of its own options.
+function microphonePeakArgs(target, channelMap, passive) {
+  var args = ["microphone-peak"]
+  if (passive) args.push("--passive")
+  return args.concat(["--", String(target), String(channelMap)])
+}
+
+// `omarchy-audio-input-set-default <id> <name>`, run detached. The host
+// script runs wpctl and pactl with no deadline of its own, so a wedged
+// pipewire-pulse would leave one hung script (and its children) per click.
+// `timeout` signals its whole process group: 10 s, then SIGKILL 1 s later.
+function inputDefaultCommand(id, name) {
+  return ["timeout", "--kill-after=1s", "10s", "omarchy-audio-input-set-default", String(id), String(name)]
 }
 
 function parseSinkAvailability(raw) {
@@ -364,8 +374,9 @@ if (typeof module !== "undefined") {
     nodeRow: nodeRow,
     rowSnapshot: rowSnapshot,
     nodeFor: nodeFor,
-    isShellLevelMeter: isShellLevelMeter,
     isUntypedSource: isUntypedSource,
+    microphonePeakArgs: microphonePeakArgs,
+    inputDefaultCommand: inputDefaultCommand,
     parseSinkAvailability: parseSinkAvailability,
     friendlyDeviceLabel: friendlyDeviceLabel,
     nodeProps: nodeProps,

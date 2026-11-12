@@ -23,7 +23,7 @@ from blackbox import helper  # noqa: E402
 # then writes the blocks of samples.json ([[float, ...], ...]; null = NaN,
 # "inf"/"-inf"), sleeping `pause` seconds after each, and then either exits
 # (`exit`) or sleeps `idle` seconds and repeats the last block forever.
-PW_RECORD = '''#!{python} -I
+PW_RECORD = """#!{python} -I
 import json, os, stat, struct, sys, time
 here = {here!r}
 config = json.load(open(os.path.join(here, "samples.json")))
@@ -44,7 +44,7 @@ time.sleep(config.get("idle", 0))
 while True:
     emit(config["blocks"][-1])
     time.sleep(0.05)
-'''
+"""
 
 
 class MicrophonePeakTest(unittest.TestCase):
@@ -60,8 +60,13 @@ class MicrophonePeakTest(unittest.TestCase):
         fake = self.bin / "pw-record"
         fake.write_text(PW_RECORD.format(python=sys.executable, here=str(self.root)))
         fake.chmod(0o755)
-        self.env = {"PATH": str(self.bin), "HOME": str(self.home), "XDG_RUNTIME_DIR": str(self.home),
-                    "LANG": "C.UTF-8", "PIPEWIRE_REMOTE": str(self.root / "no-pipewire")}
+        self.env = {
+            "PATH": str(self.bin),
+            "HOME": str(self.home),
+            "XDG_RUNTIME_DIR": str(self.home),
+            "LANG": "C.UTF-8",
+            "PIPEWIRE_REMOTE": str(self.root / "no-pipewire"),
+        }
 
     def samples(self, blocks, **options):
         (self.root / "samples.json").write_text(json.dumps({"blocks": blocks, **options}))
@@ -70,12 +75,24 @@ class MicrophonePeakTest(unittest.TestCase):
         return [json.loads(line) for line in (self.root / "calls.jsonl").read_text().splitlines() if line]
 
     def start(self, *args):
-        return subprocess.Popen(helper("microphone-peak") + list(args), env=self.env, cwd=self.home,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return subprocess.Popen(
+            helper("microphone-peak") + list(args),
+            env=self.env,
+            cwd=self.home,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
 
     def run_meter(self, *args, timeout=15):
-        return subprocess.run(helper("microphone-peak") + list(args), env=self.env, cwd=self.home,
-                              capture_output=True, text=True, timeout=timeout)
+        return subprocess.run(
+            helper("microphone-peak") + list(args),
+            env=self.env,
+            cwd=self.home,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
 
     def stop(self, proc):
         if proc.poll() is None:
@@ -87,13 +104,19 @@ class MicrophonePeakTest(unittest.TestCase):
         while len(levels) < count:
             self.assertTrue(select.select([proc.stdout], [], [], wait)[0], f"no level after {levels}")
             line = proc.stdout.readline()
-            self.assertTrue(line, f"meter exited after {levels}: {proc.stderr.read() if proc.poll() is not None else ''}")
+            self.assertTrue(
+                line, f"meter exited after {levels}: {proc.stderr.read() if proc.poll() is not None else ''}"
+            )
             levels.append(line)
         return levels
 
     def test_capture_argv_matches_the_source_layout(self):
-        for layout, rate in (("MONO", 16000), ("FL,FR", 16000), ("FL,FR,FC,LFE,RL,RR,SL,SR", 16000),
-                             ("AUX0,AUX1,AUX2,AUX3,AUX4,AUX5,AUX6,AUX7,AUX8", 8000)):
+        for layout, rate in (
+            ("MONO", 16000),
+            ("FL,FR", 16000),
+            ("FL,FR,FC,LFE,RL,RR,SL,SR", 16000),
+            ("AUX0,AUX1,AUX2,AUX3,AUX4,AUX5,AUX6,AUX7,AUX8", 8000),
+        ):
             with self.subTest(layout=layout):
                 (self.root / "calls.jsonl").write_text("")
                 channels = layout.split(",")
@@ -103,10 +126,26 @@ class MicrophonePeakTest(unittest.TestCase):
                 self.assertEqual(result.stdout, "0.000000\n")
                 self.assertEqual(result.stderr.strip(), "Microphone level unavailable: microphone capture ended")
                 call = self.calls()[0]
-                self.assertEqual(call["argv"], [
-                    "pw-record", "--raw", "--format", "f32", "--rate", str(rate), "--channels", str(len(channels)),
-                    "--channel-map", "[ " + " ".join(channels) + " ]", "--target", "alsa_input.fixture mic",
-                    "--properties", "media.category=Monitor stream.monitor=true", "-"])
+                self.assertEqual(
+                    call["argv"],
+                    [
+                        "pw-record",
+                        "--raw",
+                        "--format",
+                        "f32",
+                        "--rate",
+                        str(rate),
+                        "--channels",
+                        str(len(channels)),
+                        "--channel-map",
+                        "[ " + " ".join(channels) + " ]",
+                        "--target",
+                        "alsa_input.fixture mic",
+                        "--properties",
+                        "media.category=Monitor stream.monitor=true",
+                        "-",
+                    ],
+                )
                 self.assertTrue(call["stdin_null"])
 
     def test_passive_capture_asks_not_to_wake_the_microphone(self):
@@ -127,7 +166,9 @@ class MicrophonePeakTest(unittest.TestCase):
                 result = self.run_meter("fixture", "--", value)
                 self.assertEqual(result.returncode, 1)
                 self.assertEqual(result.stdout, "")
-                self.assertEqual(result.stderr.strip(), "Microphone level unavailable: unsupported microphone channel map")
+                self.assertEqual(
+                    result.stderr.strip(), "Microphone level unavailable: unsupported microphone channel map"
+                )
                 self.assertEqual(self.calls(), [])
         # 64 channels is the most a source can have.
         self.samples([[0.0] * 10], exit=True)
@@ -136,8 +177,9 @@ class MicrophonePeakTest(unittest.TestCase):
 
     def test_peak_scaling_and_bad_samples(self):
         block = [0.0] * 800
-        self.samples([[0.0, -0.125, 0.01] + block[3:], block, [8.0] + block[1:], [0.001] * 800, [-1.0] + block[1:]],
-                     exit=True)
+        self.samples(
+            [[0.0, -0.125, 0.01] + block[3:], block, [8.0] + block[1:], [0.001] * 800, [-1.0] + block[1:]], exit=True
+        )
         result = self.run_meter("fixture", "AUX0")
         self.assertEqual(result.stdout.splitlines(), ["0.500000", "0.000000", "1.000000", "0.100000", "1.000000"])
         # NaN or Inf anywhere in the block is rejected, not skipped by max().
@@ -210,8 +252,13 @@ class MicrophonePeakTest(unittest.TestCase):
         result = self.run_meter("fixture", "AUX0")
         self.assertEqual(result.returncode, 1)
         self.assertEqual(result.stdout, "0.500000\n")
-        self.assertIn(result.stderr.strip(), ("Microphone level unavailable: microphone capture ended",
-                                              "Microphone level unavailable: microphone capture exited"))
+        self.assertIn(
+            result.stderr.strip(),
+            (
+                "Microphone level unavailable: microphone capture ended",
+                "Microphone level unavailable: microphone capture exited",
+            ),
+        )
         # An active meter gives up after 5 s without samples, and reaps the capture.
         self.samples([[0.125] * 800], idle=30)
         started = time.monotonic()
@@ -227,17 +274,22 @@ class MicrophonePeakTest(unittest.TestCase):
         self.samples([[0.125] * 800], idle=6)
         proc = self.start("fixture", "AUX0", "--passive")
         try:
-            deadline = time.monotonic() + 9
-            levels = []
-            while time.monotonic() < deadline:
-                levels.append(float(self.levels(proc, 1, wait=2)[0]))
-                if len(levels) > 1 and levels[-1] == 0.5:
-                    break
-            self.assertEqual(levels[0], 0.5)
-            self.assertIn(0.0, levels)
-            self.assertEqual(levels[-1], 0.5)
-            # About four zero levels a second while idle.
-            self.assertGreater(levels.count(0.0), 15)
+            # Until the fake's first block arrives (its Python start can take
+            # longer than a tick on a loaded machine) the idle meter reports 0.
+            def until_data(limit):
+                levels = []
+                deadline = time.monotonic() + limit
+                while time.monotonic() < deadline:
+                    levels.append(float(self.levels(proc, 1, wait=2)[0]))
+                    if levels[-1] == 0.5:
+                        return levels
+                self.fail(f"no 0.5 level within {limit} s: {levels}")
+
+            self.assertLessEqual(set(until_data(30)[:-1]), {0.0}, "only zero levels before the first block")
+            idle = until_data(30)
+            self.assertEqual(set(idle[:-1]), {0.0}, "only zero levels while the fake is idle")
+            # About four zero levels a second through the fake's 6 s idle.
+            self.assertGreater(len(idle) - 1, 15)
             proc.terminate()
             self.assertEqual(proc.wait(timeout=3), 0)
         finally:

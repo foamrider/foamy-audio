@@ -434,6 +434,20 @@ fn sink_name(sink: &Value) -> Result<&str, String> {
         .ok_or_else(|| "invalid sink list: a sink has no name".to_string())
 }
 
+/// Whether `name` can go into `sinks=` unchanged. pactl joins the module
+/// arguments with spaces and pipewire-pulse splits them again: whitespace ends
+/// an unquoted value, a backslash escapes the next character, a leading quote
+/// opens a quoted value, and module-combine-sink splits `sinks` on commas.
+/// PipeWire names a discovered speaker `raop_sink.<host>.<ip>.<port>` with the
+/// host in Avahi's escaped form, so a space or non-ASCII letter in a speaker's
+/// host name arrives as `\032`-style escapes; a stream rule in the user's
+/// PipeWire config can set any node.name.
+fn group_member_name_ok(name: &str) -> bool {
+    !name
+        .chars()
+        .any(|c| c.is_whitespace() || c.is_control() || matches!(c, ',' | '"' | '\'' | '\\'))
+}
+
 fn refuse(message: &str) -> Result<Outcome, String> {
     Ok((json!({"ok": false, "error": message}), 1))
 }
@@ -484,6 +498,9 @@ pub fn select(
     };
     if target.is_empty() {
         return refuse("No local output is available");
+    }
+    if names.len() > 1 && !names.iter().all(|name| group_member_name_ok(name)) {
+        return refuse("An AirPlay speaker's name can't be used in a group.");
     }
     let mut group = State::new();
     if names.len() > 1 {
@@ -878,6 +895,47 @@ mod tests {
         .unwrap_err();
         assert_eq!(error, "third");
         assert_eq!(runner.calls[5], ["pactl", "list", "modules", "short"]);
+    }
+
+    #[test]
+    fn group_members_with_argument_separators_are_refused_before_loading() {
+        // A speaker host name with a space or a non-ASCII letter (Avahi escapes
+        // them as \032 and \195\184), and names a config rule could set.
+        for odd in [
+            "raop_sink.Living\\032Room.local.192.0.2.7.7000",
+            "raop_sink.Stue-h\\195\\184yttaler.local.192.0.2.8.7000",
+            "raop_sink.a b",
+            "raop_sink.a,raop_sink.c",
+            "raop_sink.a\"",
+            "raop_sink.a'",
+            "raop_sink.a\tb",
+        ] {
+            let dir = Dir::new();
+            let sinks = json!([{"index": 1, "name": "raop_sink.a"}, {"index": 2, "name": odd}]);
+            let mut runner = Script::new().ok(&sinks.to_string());
+            let (reply, code) = select(
+                &["raop_sink.a".into(), odd.into()],
+                "",
+                &mut runner,
+                &dir.0.join("s.json"),
+            )
+            .unwrap();
+            assert_eq!(code, 1, "{odd}");
+            assert_eq!(
+                reply["error"], "An AirPlay speaker's name can't be used in a group.",
+                "{odd}"
+            );
+            // Only the sink listing ran: no module was loaded, nothing rerouted.
+            assert_eq!(runner.calls.len(), 1, "{odd}");
+            assert!(!dir.0.join("s.json").exists(), "{odd}");
+        }
+        // Discovered names as PipeWire builds them, IPv6 and link-local too.
+        for name in [
+            "raop_sink.Kitchen.local.192.0.2.9.7000",
+            "raop_sink.Bedroom-2.local.fe80::1%3.7000",
+        ] {
+            assert!(group_member_name_ok(name), "{name}");
+        }
     }
 
     #[test]

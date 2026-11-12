@@ -17,13 +17,16 @@ Item {
   readonly property Item popup: found
 
   function findPopup(item, depth) {
-    if (!item || depth > 8) return null
+    if (!item || depth > 8)
+      return null
     var kids = item.children || []
     for (var i = 0; i < kids.length; i++) {
       var child = kids[i]
-      if (child && child.owner === old && child.borderSpec !== undefined) return child
+      if (child && child.owner === old && child.borderSpec !== undefined)
+        return child
       var deeper = findPopup(child, depth + 1)
-      if (deeper) return deeper
+      if (deeper)
+        return deeper
     }
     return null
   }
@@ -34,9 +37,11 @@ Item {
     repeat: true
     onTriggered: {
       var top = preview
-      while (top.parent) top = top.parent
+      while (top.parent)
+        top = top.parent
       var popup = preview.findPopup(top, 0)
-      if (!popup) return
+      if (!popup)
+        return
       popup.anchorItem = preview.anchorItem
       preview.found = popup
     }
@@ -49,5 +54,8 @@ Item {
     height: 30
     Component.onCompleted: old.open()
   }
-  onPreviewStateChanged: if (previewState === "settings") old.openSettings(); else old.closeSettings()
+  onPreviewStateChanged: if (previewState === "settings")
+    old.openSettings()
+  else
+    old.closeSettings()
 }

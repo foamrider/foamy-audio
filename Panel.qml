@@ -3,12 +3,12 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
-import qs.Commons as Commons
 import qs.Ui
 import "kit"
 import "Model.js" as Model
 import "Preferences.js" as Schema
 import "kit/FoamyNative.js" as FoamyNative
+import "kit/FoamyText.js" as FoamyText
 
 // The bar widget (one per monitor on 4.5). Shared state lives in the
 // AudioService singleton; this file owns the bar button, the popup with its
@@ -20,7 +20,11 @@ Panel {
   manageIpc: false
   readonly property alias popup: popup
 
-  FoamyMember { id: member; scope: "audio"; demanding: root.opened }
+  FoamyMember {
+    id: member
+    scope: "audio"
+    demanding: root.opened
+  }
 
   readonly property bool vertical: bar && (bar.position === "left" || bar.position === "right")
   readonly property bool showPercentage: prefs.value("showPercentage")
@@ -46,15 +50,33 @@ Panel {
   readonly property real inputPeak: inputPeakMonitor.peak
   readonly property string inputMeterError: inputPeakMonitor.error
 
-  function setOutputVolume(value) { AudioService.setOutputVolume(value) }
-  function toggleOutputMute() { AudioService.toggleOutputMute() }
-  function toggleInputMute() { AudioService.toggleInputMute() }
-  function toggleAllMuted() { AudioService.toggleAllMuted() }
-  function nodeHasVolume(node) { return AudioService.nodeHasVolume(node) }
-  function nodeVolume(node) { return AudioService.nodeVolume(node) }
-  function nodeMuted(node) { return AudioService.nodeMuted(node) }
-  function setNodeVolume(node, value, maximum) { AudioService.setNodeVolume(node, value, maximum) }
-  function toggleNodeMute(node) { AudioService.toggleNodeMute(node) }
+  function setOutputVolume(value) {
+    AudioService.setOutputVolume(value)
+  }
+  function toggleOutputMute() {
+    AudioService.toggleOutputMute()
+  }
+  function toggleInputMute() {
+    AudioService.toggleInputMute()
+  }
+  function toggleAllMuted() {
+    AudioService.toggleAllMuted()
+  }
+  function nodeHasVolume(node) {
+    return AudioService.nodeHasVolume(node)
+  }
+  function nodeVolume(node) {
+    return AudioService.nodeVolume(node)
+  }
+  function nodeMuted(node) {
+    return AudioService.nodeMuted(node)
+  }
+  function setNodeVolume(node, value, maximum) {
+    AudioService.setNodeVolume(node, value, maximum)
+  }
+  function toggleNodeMute(node) {
+    AudioService.toggleNodeMute(node)
+  }
 
   // ---- Rows ----------------------------------------------------------------
   // Repeaters get snapshots of {id, name} (Model.rowSnapshot), refreshed after
@@ -66,19 +88,32 @@ Panel {
 
   Connections {
     target: AudioService
-    function onAudioSinksChanged() { root.scheduleRows() }
-    function onRawWirelessAudioSinksChanged() { root.scheduleRows() }
-    function onAirplayPeersChanged() { root.scheduleRows() }
-    function onAudioSourcesChanged() { root.scheduleRows() }
-    function onAudioStreamsChanged() { root.scheduleRows() }
+    function onAudioSinksChanged() {
+      root.scheduleRows()
+    }
+    function onRawWirelessAudioSinksChanged() {
+      root.scheduleRows()
+    }
+    function onAirplayPeersChanged() {
+      root.scheduleRows()
+    }
+    function onAudioSourcesChanged() {
+      root.scheduleRows()
+    }
+    function onAudioStreamsChanged() {
+      root.scheduleRows()
+    }
   }
 
-  function scheduleRows() { if (opened) rowsTimer.restart() }
+  function scheduleRows() {
+    if (opened)
+      rowsTimer.restart()
+  }
   function refreshRows() {
-    if (!opened) return
+    if (!opened)
+      return
     displayAudioSinks = Model.rowSnapshot(AudioService.audioSinks)
-    displayWirelessAudioSinks = Model.rowSnapshot(Model.uniqueAirplaySinks(
-      AudioService.rawWirelessAudioSinks.slice(), AudioService.airplayPeers, sink))
+    displayWirelessAudioSinks = Model.rowSnapshot(Model.uniqueAirplaySinks(AudioService.rawWirelessAudioSinks.slice(), AudioService.airplayPeers, sink))
     displayAudioSources = Model.rowSnapshot(AudioService.audioSources)
     displayAudioStreams = Model.rowSnapshot(AudioService.audioStreams)
   }
@@ -89,7 +124,11 @@ Panel {
     displayAudioSources = []
     displayAudioStreams = []
   }
-  Timer { id: rowsTimer; interval: 75; onTriggered: root.refreshRows() }
+  Timer {
+    id: rowsTimer
+    interval: 75
+    onTriggered: root.refreshRows()
+  }
 
   onOpenedChanged: {
     if (opened) {
@@ -99,68 +138,100 @@ Panel {
     }
   }
 
-  function nodeFor(row) { return Model.nodeFor(row, AudioService.nodes) }
+  function nodeFor(row) {
+    return Model.nodeFor(row, AudioService.nodes)
+  }
   function nodeLabel(node) {
     var label = node ? Model.nodeLabel(node) : ""
     return label === "Unknown" ? FoamyI18n.t(label) : label
   }
   function airplayRoomLabel(node) {
-    if (node && String(node.name).indexOf("foamy_airplay_group_") === 0) return FoamyI18n.t("AirPlay group")
+    if (node && String(node.name).indexOf("foamy_airplay_group_") === 0)
+      return FoamyI18n.t("AirPlay group")
     var peer = Model.airplayPeerForSink(node, AudioService.airplayPeers)
-    if (peer && peer.name) return String(peer.name)
+    if (peer && peer.name)
+      return String(peer.name)
     var label = Model.airplayRoomLabel(node)
     return label === "AirPlay speaker" ? FoamyI18n.t(label) : label
   }
-  function streamLabel(node) { return Model.streamLabel(node, AudioService.mprisPlayers, AudioService.audioStreams) }
+  // The output label is the device's or AirPlay speaker's own name (driver,
+  // mDNS), and the host bar tooltip has no size limit of its own.
+  function barTooltip(label) {
+    return FoamyText.tooltip(FoamyI18n.t("Audio") + (label ? " · " + label : ""))
+  }
+  function streamLabel(node) {
+    return Model.streamLabel(node, AudioService.mprisPlayers, AudioService.audioStreams)
+  }
   function rowLabel(kind, node) {
-    if (!node) return ""
+    if (!node)
+      return ""
     return kind === "stream" ? streamLabel(node) : kind === "wireless" ? airplayRoomLabel(node) : nodeLabel(node)
   }
   function rowIcon(kind, node) {
-    if (kind === "source") return "mic"
-    if (kind === "stream") return node && nodeMuted(node) ? "volume-x" : "app-window"
-    if (kind === "wireless" || Model.isAirplaySink(node)) return "airplay"
+    if (kind === "source")
+      return "mic"
+    if (kind === "stream")
+      return node && nodeMuted(node) ? "volume-x" : "app-window"
+    if (kind === "wireless" || Model.isAirplaySink(node))
+      return "airplay"
     return Model.isHeadphones(node, AudioService.bluetoothDevices) ? "headphones" : "speaker"
   }
   function isSelected(kind, node) {
-    if (!node) return false
-    if (kind === "sink") return !!sink && sink.id === node.id
-    if (kind === "source") return !!source && source.id === node.id
-    if (kind === "wireless") return AudioService.airplaySelected(node)
+    if (!node)
+      return false
+    if (kind === "sink")
+      return !!sink && sink.id === node.id
+    if (kind === "source")
+      return !!source && source.id === node.id
+    if (kind === "wireless")
+      return AudioService.airplaySelected(node)
     return false
   }
   // The default output row controls the physical sink behind any DSP sink.
-  function volumeTarget(kind, node) { return kind === "sink" && node && sink && node.id === sink.id ? AudioService.volumeSink : node }
+  function volumeTarget(kind, node) {
+    return kind === "sink" && node && sink && node.id === sink.id ? AudioService.volumeSink : node
+  }
   function activate(kind, node) {
-    if (!node) return
-    if (kind === "sink") AudioService.selectLocalSink(node)
-    else if (kind === "source") AudioService.setDefaultSource(node)
-    else if (kind === "wireless") AudioService.selectAirplaySink(node)
-    else toggleNodeMute(node)
+    if (!node)
+      return
+    if (kind === "sink")
+      AudioService.selectLocalSink(node)
+    else if (kind === "source")
+      AudioService.setDefaultSource(node)
+    else if (kind === "wireless")
+      AudioService.selectAirplaySink(node)
+    else
+      toggleNodeMute(node)
   }
 
   function appIconSource(icon) {
     var value = String(icon || "")
-    if (!value) return ""
-    if (value.indexOf("file://") === 0) return value
-    if (value.charAt(0) === "/") return Util.fileUrl(value)
+    if (!value)
+      return ""
+    if (value.indexOf("file://") === 0)
+      return value
+    if (value.charAt(0) === "/")
+      return Util.fileUrl(value)
     return Quickshell.iconPath(value, true)
   }
 
   function streamIconSource(node) {
     var properties = Model.nodeProps(node)
     var supplied = appIconSource(properties["application.icon-name"])
-    if (supplied) return supplied
-    // Some streams omit an icon or desktop ID; resolve the installed app by identity.
-    DesktopEntries.applications.values
-    var candidates = [properties["application.id"], properties["application.process.binary"],
-      properties["application.name"], streamLabel(node), node ? node.name : ""]
+    if (supplied)
+      return supplied
+    // Some streams omit an icon or desktop ID; resolve the installed app by
+    // identity. Reading the list makes a binding re-run once the entries load.
+    void DesktopEntries.applications.values
+    var candidates = [properties["application.id"], properties["application.process.binary"], properties["application.name"], streamLabel(node), node ? node.name : ""]
     for (var i = 0; i < candidates.length; i++) {
-      if (!candidates[i]) continue
+      if (!candidates[i])
+        continue
       var name = String(candidates[i]).replace(/\.desktop$/, "")
       var entry = DesktopEntries.byId(name) || DesktopEntries.heuristicLookup(name)
       var found = entry ? appIconSource(entry.icon) : ""
-      if (found) return found
+      if (found)
+        return found
     }
     return ""
   }
@@ -183,16 +254,27 @@ Panel {
     fields: Schema.fields
     settings: root.settings
   }
-  FoamySettingsState { id: settingsState; panel: root }
+  FoamySettingsState {
+    id: settingsState
+    panel: root
+  }
   readonly property bool editingSettings: settingsState.editing
   readonly property bool saving: prefs.saving
   readonly property string settingsError: prefs.error
   readonly property bool settingsRetryable: prefs.canRetry
 
-  function openSettings() { settingsState.show() }
-  function closeSettings() { settingsState.hide() }
-  function save(key, next) { prefs.save(key, next) }
-  function retrySave() { prefs.retry() }
+  function openSettings() {
+    settingsState.show()
+  }
+  function closeSettings() {
+    settingsState.hide()
+  }
+  function save(key, next) {
+    prefs.save(key, next)
+  }
+  function retrySave() {
+    prefs.retry()
+  }
 
   // ---- Firewall (Settings → AirPlay firewall) ------------------------------
   property string firewallState: ""
@@ -200,24 +282,27 @@ Panel {
   property bool firewallLegacy: false
   readonly property bool firewallBusy: firewallProcess.running
   readonly property var firewallMessages: ({
-    open: "The speakers can reach PipeWire.",
-    wide: "Ports are open to every network. Remove the rule, then apply to limit it to this network.",
-    missing: "No rule lets the speakers in. Apply to allow this network.",
-    present: "A Foamy Audio rule exists. Find speakers to check it.",
-    conflict: "A blocking rule may affect AirPlay. Review the UFW rules.",
-    inactive: "UFW is inactive.",
-    applied: "Rule added for this network. Verify to check.",
-    removed: "Foamy Audio rules removed.",
-    none: "No Foamy Audio rules to remove.",
-    nopeers: "No AirPlay speakers found yet."
-  })
+      open: "The speakers can reach PipeWire.",
+      wide: "Ports are open to every network. Remove the rule, then apply to limit it to this network.",
+      missing: "No rule lets the speakers in. Apply to allow this network.",
+      present: "A Foamy Audio rule exists. Find speakers to check it.",
+      conflict: "A blocking rule may affect AirPlay. Review the UFW rules.",
+      inactive: "UFW is inactive.",
+      applied: "Rule added for this network. Verify to check.",
+      removed: "Foamy Audio rules removed.",
+      none: "No Foamy Audio rules to remove.",
+      nopeers: "No AirPlay speakers found yet."
+    })
 
   function firewallAction(action) {
-    if (firewallProcess.running) return
+    if (firewallProcess.running)
+      return
     var command = [action]
     if (action !== "remove") {
       var peers = AudioService.airplayPeers
-      for (var i = 0; i < peers.length; i++) if (peers[i] && peers[i].address) command.push("--peer", String(peers[i].address))
+      for (var i = 0; i < peers.length; i++)
+        if (peers[i] && peers[i].address)
+          command.push("--peer", String(peers[i].address))
     } else if (firewallLegacy) {
       command.push("--legacy")
     }
@@ -229,9 +314,15 @@ Panel {
 
   Process {
     id: firewallProcess
-    stdout: StdioCollector { id: firewallOutput; waitForEnd: true }
-    stderr: StdioCollector { id: firewallErrors; waitForEnd: true }
-    onExited: function(code) {
+    stdout: StdioCollector {
+      id: firewallOutput
+      waitForEnd: true
+    }
+    stderr: StdioCollector {
+      id: firewallErrors
+      waitForEnd: true
+    }
+    onExited: function (code) {
       if (FoamyNative.unavailable(code)) {
         // No helper for this CPU: say so; firewall actions only run on request.
         root.firewallState = "error"
@@ -243,11 +334,13 @@ Panel {
         if (!result.state || typeof result.message !== "string" || typeof result.details !== "string")
           throw new Error("Invalid UFW helper response")
         root.firewallState = code === 0 ? result.state : "error"
-        if (result.legacy !== undefined) root.firewallLegacy = result.legacy === true
-        if (result.state === "removed") root.firewallLegacy = false
-        root.firewallMessage = result.details === "Administrator authorization was cancelled or denied."
-          ? "Authorization cancelled or denied." : root.firewallMessages[root.firewallState] || result.message
-        if (code !== 0) console.warn("Foamy Audio UFW:", result.details)
+        if (result.legacy !== undefined)
+          root.firewallLegacy = result.legacy === true
+        if (result.state === "removed")
+          root.firewallLegacy = false
+        root.firewallMessage = result.details === "Administrator authorization was cancelled or denied." ? "Authorization cancelled or denied." : root.firewallMessages[root.firewallState] || result.message
+        if (code !== 0)
+          console.warn("Foamy Audio UFW:", result.details)
       } catch (error) {
         root.firewallState = "error"
         root.firewallMessage = "Could not complete the UFW check."
@@ -259,48 +352,87 @@ Panel {
   // ---- IPC (one handler per shell) ---------------------------------------
   function statusObject() {
     return {
-      open: root.opened, settings: root.editingSettings, language: FoamyI18n.language, leader: member.isLeader,
-      output: root.outputLabel, input: root.source ? Model.nodeLabel(root.source) : "",
-      volume: root.outputVolume, inputVolume: AudioService.inputVolume, outputMuted: root.outputMuted, inputMuted: root.inputMuted,
+      open: root.opened,
+      settings: root.editingSettings,
+      language: FoamyI18n.language,
+      leader: member.isLeader,
+      output: root.outputLabel,
+      input: root.source ? Model.nodeLabel(root.source) : "",
+      volume: root.outputVolume,
+      inputVolume: AudioService.inputVolume,
+      outputMuted: root.outputMuted,
+      inputMuted: root.inputMuted,
       volumeSink: AudioService.volumeSink ? String(AudioService.volumeSink.name) : "",
-      outputs: root.displayAudioSinks.length, inputs: root.displayAudioSources.length, apps: root.displayAudioStreams.length,
-      wireless: root.airplayScanState, wirelessError: root.airplayError,
-      wirelessOutputs: root.displayWirelessAudioSinks.map(function(row) {
+      outputs: root.displayAudioSinks.length,
+      inputs: root.displayAudioSources.length,
+      apps: root.displayAudioStreams.length,
+      wireless: root.airplayScanState,
+      wirelessError: root.airplayError,
+      wirelessOutputs: root.displayWirelessAudioSinks.map(function (row) {
         var node = root.nodeFor(row)
-        return { name: row.name, label: root.airplayRoomLabel(node), selected: AudioService.airplaySelected(node) }
+        return {
+          name: row.name,
+          label: root.airplayRoomLabel(node),
+          selected: AudioService.airplaySelected(node)
+        }
       }),
-      settingsError: root.settingsError, firewall: root.firewallState,
-      microphonePeak: inputPeakMonitor.peak, microphoneMeterError: inputPeakMonitor.error,
-      platformHints: !!AudioService.platform, untypedInput: AudioService.inputViaWpctl
+      settingsError: root.settingsError,
+      firewall: root.firewallState,
+      microphonePeak: inputPeakMonitor.peak,
+      microphoneMeterError: inputPeakMonitor.error,
+      platformHints: !!AudioService.platform,
+      untypedInput: AudioService.inputViaWpctl
     }
   }
 
   FoamyIpc {
     target: "foamy.audio"
     enabled: member.isLeader
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function toggle(): void { root.toggle() }
-    function settings(): void { root.openSettings() }
-    function status(): string { return JSON.stringify(root.statusObject()) }
+    function open(): void {
+      root.open()
+    }
+    function close(): void {
+      root.close()
+    }
+    function toggle(): void {
+      root.toggle()
+    }
+    function settings(): void {
+      root.openSettings()
+    }
+    function status(): string {
+      return JSON.stringify(root.statusObject())
+    }
   }
 
   // The last instance going away (plugin disabled or removed) ends discovery.
-  Component.onDestruction: if (member.members <= 1) AudioService.teardown()
+  Component.onDestruction: if (member.members <= 1)
+    AudioService.teardown()
 
   // ---- Bar button --------------------------------------------------------
   // Nerd Font code points as escapes: private-use glyphs are easy to lose in an edit.
   function barGlyph() {
-    if (airplayActive) return "\u{F1749}"                 // nf-md-cast_audio_variant
+    // nf-md-cast_audio_variant
+    if (airplayActive)
+      return "\u{F1749}"
     // The Waybar pulseaudio glyph set; the Material speaker icons render smaller.
-    if (!sink || !sink.audio || outputMuted) return "\ueee8" // muted / no output
-    if (Model.isHeadphones(sink, AudioService.bluetoothDevices)) return "\u{F02CB}" // nf-md-headphones
-    if (outputVolume >= 0.67) return "\uf028"              // nf-fa-volume_up
-    if (outputVolume >= 0.34) return "\uf027"              // nf-fa-volume_down
-    if (outputVolume > 0) return "\uf026"                  // nf-fa-volume_off
+    // Muted or no output.
+    if (!sink || !sink.audio || outputMuted)
+      return "\ueee8"
+    // nf-md-headphones
+    if (Model.isHeadphones(sink, AudioService.bluetoothDevices))
+      return "\u{F02CB}"
+    // nf-fa-volume_up
+    if (outputVolume >= 0.67)
+      return "\uf028"
+    // nf-fa-volume_down
+    if (outputVolume >= 0.34)
+      return "\uf027"
+    // nf-fa-volume_off
+    if (outputVolume > 0)
+      return "\uf026"
     return "\ueee8"
   }
-
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -312,10 +444,9 @@ Panel {
     text: ""
     labelVisible: false
     hasVisualContent: true
-    fixedWidth: root.vertical ? -1 : Math.max(Style.bar.iconSlot,
-      barContent.implicitWidth + Style.bar.iconSlot - Style.bar.iconCanvas)
+    fixedWidth: root.vertical ? -1 : Math.max(Style.bar.iconSlot, barContent.implicitWidth + Style.bar.iconSlot - Style.bar.iconCanvas)
     dimmed: root.outputMuted
-    tooltipText: FoamyI18n.t("Audio") + (root.outputLabel ? " · " + root.outputLabel : "")
+    tooltipText: root.barTooltip(root.outputLabel)
     Row {
       id: barContent
       anchors.centerIn: parent
@@ -338,7 +469,12 @@ Panel {
         font.pixelSize: button.fontSize
       }
     }
-    onPressed: function(b) { if (b === Qt.RightButton) root.toggleAllMuted(); else root.toggle() }
+    onPressed: function (b) {
+      if (b === Qt.RightButton)
+        root.toggleAllMuted()
+      else
+        root.toggle()
+    }
   }
 
   FoamyPopup {
@@ -348,7 +484,9 @@ Panel {
     bar: root.bar
     open: root.opened
     body: Component {
-      AudioView { audio: root }
+      AudioView {
+        audio: root
+      }
     }
   }
 }

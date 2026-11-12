@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell.Io
 import Quickshell.Services.Pipewire
+import "Model.js" as Model
 import "kit/FoamyNative.js" as FoamyNative
 
 Item {
@@ -9,22 +10,17 @@ Item {
   property bool passive: false
   enabled: false
   readonly property var channels: source && source.audio ? source.audio.channels : []
-  readonly property bool stereo: channels.length === 2
-    && channels[0] === PwAudioChannel.FrontLeft && channels[1] === PwAudioChannel.FrontRight
+  readonly property bool stereo: channels.length === 2 && channels[0] === PwAudioChannel.FrontLeft && channels[1] === PwAudioChannel.FrontRight
   readonly property string channelMap: {
-    if (!source || !source.ready || !source.properties) return ""
+    if (!source || !source.ready || !source.properties)
+      return ""
     var raw = String(source.properties["audio.position"] || "").replace(/[\[\]"]/g, "").trim()
     return raw ? raw.split(/[\s,]+/).join(",") : stereo ? "FL,FR" : ""
   }
   readonly property bool useHelper: passive || !stereo
-  readonly property string requestedKey: enabled && source && channels.length > 0 && useHelper && channelMap
-    ? source.name + "|" + channelMap + "|" + passive : ""
-  readonly property string error: failure || (helperUnavailable && enabled && useHelper ? FoamyNative.UNAVAILABLE_TEXT : "")
-    || (enabled && channels.length > 0 && useHelper && !channelMap
-    ? "Microphone level unavailable" : "")
-  readonly property real peak: !enabled || !source || !source.audio || source.audio.muted ? 0
-    : !useHelper ? nativeMeter.peak
-    : Math.min(1, fallbackPeak / Math.max(0.0001, source.audio.volume))
+  readonly property string requestedKey: enabled && source && channels.length > 0 && useHelper && channelMap ? source.name + "|" + channelMap + "|" + passive : ""
+  readonly property string error: failure || (helperUnavailable && enabled && useHelper ? FoamyNative.UNAVAILABLE_TEXT : "") || (enabled && channels.length > 0 && useHelper && !channelMap ? "Microphone level unavailable" : "")
+  readonly property real peak: !enabled || !source || !source.audio || source.audio.muted ? 0 : !useHelper ? nativeMeter.peak : Math.min(1, fallbackPeak / Math.max(0.0001, source.audio.volume))
   property real fallbackPeak: 0
   property string failure: ""
   property string launchedKey: ""
@@ -38,7 +34,8 @@ Item {
   property string stderrHead: ""
 
   function keepStderr(data) {
-    if (stderrHead.length < stderrLimit) stderrHead += String(data).slice(0, stderrLimit - stderrHead.length)
+    if (stderrHead.length < stderrLimit)
+      stderrHead += String(data).slice(0, stderrLimit - stderrHead.length)
   }
 
   onRequestedKeyChanged: {
@@ -56,17 +53,20 @@ Item {
       }
       return
     }
-    if (!requestedKey || requestedKey === failedKey || helperUnavailable) return
+    if (!requestedKey || requestedKey === failedKey || helperUnavailable)
+      return
     launchedKey = requestedKey
     stopping = false
     stderrHead = ""
-    var args = ["microphone-peak", source.name, channelMap]
-    if (passive) args.push("--passive")
-    capture.command = FoamyNative.command(FoamyNative.localPath(Qt.resolvedUrl(".")), "foamy-audio-helper", args)
+    capture.command = FoamyNative.command(FoamyNative.localPath(Qt.resolvedUrl(".")), "foamy-audio-helper", Model.microphonePeakArgs(source.name, channelMap, passive))
     capture.running = true
   }
 
-  Timer { id: reconcile; interval: 0; onTriggered: root.syncCapture() }
+  Timer {
+    id: reconcile
+    interval: 0
+    onTriggered: root.syncCapture()
+  }
   PwNodePeakMonitor {
     id: nativeMeter
     node: root.source
@@ -75,7 +75,7 @@ Item {
   Process {
     id: capture
     stdout: SplitParser {
-      onRead: function(data) {
+      onRead: function (data) {
         var level = Number(data)
         if (root.launchedKey === root.requestedKey && data.trim() && isFinite(level) && level >= 0 && level <= 1)
           root.fallbackPeak = level
@@ -84,9 +84,11 @@ Item {
     // Chunks as they arrive (no split), so only stderrLimit is ever kept.
     stderr: SplitParser {
       splitMarker: ""
-      onRead: function(data) { root.keepStderr(data) }
+      onRead: function (data) {
+        root.keepStderr(data)
+      }
     }
-    onExited: function(exitCode) {
+    onExited: function (exitCode) {
       root.fallbackPeak = 0
       if (FoamyNative.unavailable(exitCode)) {
         root.helperUnavailable = true

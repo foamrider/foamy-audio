@@ -22,7 +22,11 @@ Slider {
   implicitHeight: Commons.Style.space(24)
   padding: 0
   opacity: revealed || pressed ? 1 : 0
-  Behavior on opacity { NumberAnimation { duration: FoamyMotion.hover } }
+  Behavior on opacity {
+    NumberAnimation {
+      duration: FoamyMotion.hover
+    }
+  }
   Accessible.name: label
   background: Rectangle {
     x: root.leftPadding
@@ -31,7 +35,11 @@ Slider {
     height: Commons.Style.space(root.mini ? 3 : 4)
     radius: height / 2
     color: Qt.alpha(Commons.Color.popups.text, root.hasCursor ? 0.28 : 0.18)
-    Behavior on color { ColorAnimation { duration: FoamyMotion.hover } }
+    Behavior on color {
+      ColorAnimation {
+        duration: FoamyMotion.hover
+      }
+    }
     Rectangle {
       // Fill represents volume; visualPosition includes the mirrored handle position.
       x: root.mirrored ? parent.width - width : 0
@@ -59,7 +67,11 @@ Slider {
       border.color: Commons.Color.accent
       opacity: root.hasCursor ? 1 : 0
       visible: opacity > 0
-      Behavior on opacity { NumberAnimation { duration: FoamyMotion.hover } }
+      Behavior on opacity {
+        NumberAnimation {
+          duration: FoamyMotion.hover
+        }
+      }
     }
   }
 }

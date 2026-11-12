@@ -37,11 +37,12 @@ Optional:
   to remove it from the group; removing the last one returns to local audio.
   Each speaker keeps its own level. Discovery runs while the panel is open and
   stops when it closes with no AirPlay output selected (and when the plugin is
-  disabled or removed).
+  disabled or removed). A session a crashed shell left running is stopped
+  after the next start, once the default output is known and isn't AirPlay.
 - The bar volume and mute follow the physical output behind a speaker tuning
   or EasyEffects, the same sink the volume keys use. It is re-resolved when
   the output, the PipeWire graph or EasyEffects' output changes; nothing polls.
-- On Omarchy 4.5, nodes a platform's audio processing adds are hidden, and a
+- Nodes a platform's audio processing adds are hidden, and a
   virtual default input (EasyEffects, a platform microphone mapping) gets
   volume and mute through `wpctl`, like the stock panel.
 
@@ -153,11 +154,14 @@ uninstall PipeWire, Avahi or other packages.
 `kit/` holds shared components copied from [foamy-kit](https://github.com/foamrider/foamy-kit); edit them there and run its `sync.sh`, not here.
 
 ```sh
+mise install                  # once: the pinned linters and formatters (mise.toml)
+tests/validate.sh             # every check, then tests/suite.sh; --ci, --fast, --list
+tests/suite.sh                # the tests alone (--ci: node and helper only; --fast: no Quickshell)
 node tests/model.test.js && node tests/preferences.test.js && node tests/i18n.test.cjs
 python3 -I -m unittest discover -s tests -p 'test_*.py'   # the helper as a process, fake tools (tests/blackbox.py)
 FOAMY_HELPER='["bin/aarch64/foamy-audio-helper"]' python3 -I -m unittest discover -s tests -p 'test_*.py'   # via qemu binfmt
 bash tests/kit-check.sh
-python3 -I tests/runtime.py   # offscreen on the installed 4.5 shell (4.0 only with FOAMY_HOST_40); needs foamy-kit (FOAMY_KIT)
+python3 -I tests/runtime.py   # offscreen on the installed 4.5 shell; needs foamy-kit (FOAMY_KIT)
 ```
 
 The helper is Rust (`native/`, its contract at the top of
