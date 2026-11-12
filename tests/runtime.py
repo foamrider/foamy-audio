@@ -16,6 +16,7 @@ server.
 FOAMY_KIT (default ~/GitHub/Personal/foamy-kit) provides the harness.
 The host is Omarchy 4.5: FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else
 the installed /usr/share/omarchy/shell."""
+
 import json
 import os
 from pathlib import Path
@@ -44,9 +45,18 @@ printf '%s\\n' "${{0##*/}} $*" >> "$FOAMY_OUT/calls.log"
 echo "{FAKE_ERROR}" >&2
 exit 1
 """
-FAKES = ("pactl", "avahi-browse", "pw-record", "pw-link", "wpctl", "omarchy-audio-output-sink",
-         "omarchy-audio-sink-availability", "omarchy-audio-tuning", "omarchy-audio-output-set-default",
-         "omarchy-audio-input-set-default")
+FAKES = (
+    "pactl",
+    "avahi-browse",
+    "pw-record",
+    "pw-link",
+    "wpctl",
+    "omarchy-audio-output-sink",
+    "omarchy-audio-sink-availability",
+    "omarchy-audio-tuning",
+    "omarchy-audio-output-set-default",
+    "omarchy-audio-input-set-default",
+)
 
 
 def ipc_status(run):
@@ -59,8 +69,13 @@ def ipc_status(run):
     if not ids:
         print("    no quickshell instance to call")
         return None
-    result = subprocess.run(["qs", "ipc", "-i", ids[0], "call", "foamy.audio", "status"], env=run.env,
-                            capture_output=True, text=True, timeout=10)
+    result = subprocess.run(
+        ["qs", "ipc", "-i", ids[0], "call", "foamy.audio", "status"],
+        env=run.env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
     if result.returncode != 0:
         print("    qs ipc failed: " + result.stderr.strip()[-300:])
         return None
@@ -71,8 +86,9 @@ def run(host, lang):
     shell = (PLUGIN / "tests/qml/Runtime.qml").read_text()
     # A short prefix: qs's IPC socket lives under the run dir, and a unix socket
     # path past 107 bytes fails to bind ("Failed to start IPC server").
-    r = harness.Run(host, shell, plugin=PLUGIN, language=lang, prefix=f"fa-rt-{lang}-",
-                    fakebin={name: FAKE for name in FAKES})
+    r = harness.Run(
+        host, shell, plugin=PLUGIN, language=lang, prefix=f"fa-rt-{lang}-", fakebin={name: FAKE for name in FAKES}
+    )
     # The harness drops Omarchy's bin dirs and $APPDIR, stubs every other
     # omarchy command and points PULSE_SERVER/PIPEWIRE_REMOTE at dead sockets.
     r.env.update(FOAMY_LANG=lang, FOAMY_HOLD_MS="3000", FOAMY_FAKE_ERROR=FAKE_ERROR)
@@ -83,7 +99,9 @@ def run(host, lang):
     finally:
         r.stop()
     log = r.log
-    result = next((line.split("FOAMY RESULT ", 1)[1] for line in log.splitlines() if "FOAMY RESULT" in line), "no result")
+    result = next(
+        (line.split("FOAMY RESULT ", 1)[1] for line in log.splitlines() if "FOAMY RESULT" in line), "no result"
+    )
     failures = r.failures()
     try:
         leader = status is not None and json.loads(status).get("leader") is True
@@ -120,8 +138,13 @@ esac
 
 def run_leftover():
     """Discovery a crashed shell left running stops only under a local output."""
-    r = harness.Run("4.5", (PLUGIN / "tests/qml/Leftover.qml").read_text(), plugin=None, prefix="fa-lo-",
-                    fakebin={name: FAKE for name in FAKES})
+    r = harness.Run(
+        "4.5",
+        (PLUGIN / "tests/qml/Leftover.qml").read_text(),
+        plugin=None,
+        prefix="fa-lo-",
+        fakebin={name: FAKE for name in FAKES},
+    )
     plugin = hostenv.fake_helper_plugin(PLUGIN, r.base / "plugin-copy", "foamy-audio-helper", LEFTOVER_HELPER)
     (r.root / "plugin").symlink_to(plugin, target_is_directory=True)
     r.env.update(FOAMY_FAKE_ERROR=FAKE_ERROR)
@@ -133,8 +156,9 @@ def run_leftover():
         failures.append(f"FOAMY FAIL helper calls: {calls}")
     if r.host_commands():
         failures.append(f"FOAMY FAIL host commands ran without a fake: {r.host_commands()}")
-    result = next((line.split("FOAMY RESULT ", 1)[1] for line in r.log.splitlines() if "FOAMY RESULT" in line),
-                  "no result")
+    result = next(
+        (line.split("FOAMY RESULT ", 1)[1] for line in r.log.splitlines() if "FOAMY RESULT" in line), "no result"
+    )
     ok = "FOAMY DONE" in r.log and not failures
     print(f"{'PASS' if ok else 'FAIL'} runtime leftover discovery: {result}")
     if not ok:

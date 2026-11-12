@@ -64,8 +64,11 @@ def helper(tool):
 
 def _namespaces_work():
     try:
-        result = subprocess.run(["/usr/bin/unshare", "--user", "--map-root-user", "--mount", "--", "/bin/true"],
-                                capture_output=True, timeout=10)
+        result = subprocess.run(
+            ["/usr/bin/unshare", "--user", "--map-root-user", "--mount", "--", "/bin/true"],
+            capture_output=True,
+            timeout=10,
+        )
     except (OSError, subprocess.SubprocessError):
         return False
     return result.returncode == 0
@@ -86,7 +89,7 @@ def needs_namespace(*paths):
 
 # One script for every queued fake: log the call, answer with the tool's next
 # queued response ({"stdout", "stderr", "code", "sleep"}).
-QUEUED = '''#!{python} -I
+QUEUED = """#!{python} -I
 import fcntl, json, os, sys, time
 here = {here!r}
 name = os.path.basename(sys.argv[0])
@@ -123,11 +126,11 @@ sys.stderr.write(response.get("stderr", ""))
 sys.stdout.flush()
 time.sleep(response.get("sleep", 0))
 sys.exit(response.get("code", 0))
-'''
+"""
 
 # `ip -j route get <peer>` answers from routes.json (a missing peer is
 # unreachable), `ip -j -4|-6 addr show dev <if>` with addresses.json.
-IP = '''#!{python} -I
+IP = """#!{python} -I
 import json, os, sys
 here = {here!r}
 with open(os.path.join(here, "calls.jsonl"), "a") as log:
@@ -142,15 +145,15 @@ if args[:3] == ["-j", "route", "get"]:
     print(json.dumps([routes[args[-1]]]))
 else:
     print(open(os.path.join(here, "addresses.json")).read())
-'''
+"""
 
 # Stands in for /usr/bin/ufw: the fake pkexec never runs it, so a call is a bug.
-UFW_TRAP = '''#!{python} -I
+UFW_TRAP = """#!{python} -I
 import json, os, sys
 with open(os.path.join({here!r}, "calls.jsonl"), "a") as log:
     log.write(json.dumps({{"argv": ["ufw-direct", *sys.argv[1:]], "path": sys.argv[0], "lc_all": None}}) + "\\n")
 sys.exit(98)
-'''
+"""
 
 WLAN = [{"ifname": "wlan0", "addr_info": [{"family": "inet", "local": "192.0.2.10", "prefixlen": 24}]}]
 
@@ -207,7 +210,8 @@ class Fakes:
     def queue(self, tool, *responses):
         queue = json.loads((self.fake / "queue.json").read_text())
         queue.setdefault(tool, []).extend(
-            response if isinstance(response, dict) else {"stdout": response} for response in responses)
+            response if isinstance(response, dict) else {"stdout": response} for response in responses
+        )
         (self.fake / "queue.json").write_text(json.dumps(queue))
 
     def leftover(self, tool):
@@ -240,15 +244,31 @@ class Fakes:
     def run(self, tool, *args, env=None, timeout=60):
         argv = helper(tool) + list(args)
         if self.binds:
-            steps = [f"/usr/bin/mount --bind {shlex.quote(str(source))} {shlex.quote(target)}"
-                     for source, target in self.binds]
+            steps = [
+                f"/usr/bin/mount --bind {shlex.quote(str(source))} {shlex.quote(target)}"
+                for source, target in self.binds
+            ]
             # Refuse to start the helper unless every bind is in place.
-            steps += [f'[ "$(/usr/bin/stat -Lc %d:%i {shlex.quote(str(source))})" = '
-                      f'"$(/usr/bin/stat -Lc %d:%i {shlex.quote(target)})" ]' for source, target in self.binds]
-            argv = ["/usr/bin/unshare", "--user", "--map-root-user", "--mount", "--", "/bin/sh", "-c",
-                    " && ".join(steps) + ' && exec "$@"', "sh", *argv]
-        return subprocess.run(argv, env={**self.env, **(env or {})}, capture_output=True, text=True,
-                              timeout=timeout, cwd=self.root)
+            steps += [
+                f'[ "$(/usr/bin/stat -Lc %d:%i {shlex.quote(str(source))})" = '
+                f'"$(/usr/bin/stat -Lc %d:%i {shlex.quote(target)})" ]'
+                for source, target in self.binds
+            ]
+            argv = [
+                "/usr/bin/unshare",
+                "--user",
+                "--map-root-user",
+                "--mount",
+                "--",
+                "/bin/sh",
+                "-c",
+                " && ".join(steps) + ' && exec "$@"',
+                "sh",
+                *argv,
+            ]
+        return subprocess.run(
+            argv, env={**self.env, **(env or {})}, capture_output=True, text=True, timeout=timeout, cwd=self.root
+        )
 
 
 def reply(result):
