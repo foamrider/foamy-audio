@@ -29,8 +29,7 @@ PanelKeyCatcher {
   property bool wirelessExpanded: false
 
   implicitWidth: FoamyStyle.popupWidth
-  implicitHeight: editing ? settingsPage.implicitHeight
-    : band.implicitHeight + FoamyStyle.gap + listColumn.implicitHeight + footer.height
+  implicitHeight: editing ? settingsPage.implicitHeight : band.implicitHeight + FoamyStyle.gap + listColumn.implicitHeight + footer.height
   blocked: editing
 
   function resetView() {
@@ -45,11 +44,22 @@ PanelKeyCatcher {
   Connections {
     target: view.audio
     ignoreUnknownSignals: true
-    function onOpenedChanged() { if (view.audio.opened) view.resetView() }
-    function onAirplayActiveChanged() { if (view.audio.airplayActive) view.wirelessExpanded = true }
+    function onOpenedChanged() {
+      if (view.audio.opened)
+        view.resetView()
+    }
+    function onAirplayActiveChanged() {
+      if (view.audio.airplayActive)
+        view.wirelessExpanded = true
+    }
     function onEditingSettingsChanged() {
-      if (view.editing) Qt.callLater(function() { settingsPage.resetScroll(); settingsPage.focusBack() })
-      else view.forceActiveFocus()
+      if (view.editing)
+        Qt.callLater(function () {
+          settingsPage.resetScroll()
+          settingsPage.focusBack()
+        })
+      else
+        view.forceActiveFocus()
     }
   }
 
@@ -57,7 +67,11 @@ PanelKeyCatcher {
   readonly property var headerStops: ["outputMute", "inputMute", "settings"]
   readonly property var stops: {
     var list = headerStops.concat(["volume", "section:output"])
-    function add(kind, rows, expanded) { if (expanded) for (var i = 0; i < rows.length; i++) list.push(kind + ":" + i) }
+    function add(kind, rows, expanded) {
+      if (expanded)
+        for (var i = 0; i < rows.length; i++)
+          list.push(kind + ":" + i)
+    }
     add("sink", audio.displayAudioSinks, outputExpanded)
     list.push("section:input")
     add("source", audio.displayAudioSources, inputExpanded)
@@ -70,43 +84,70 @@ PanelKeyCatcher {
   }
   readonly property string cursorKey: cursor.index >= 0 && cursor.index < stops.length ? stops[cursor.index] : ""
 
-  FoamyCursor { id: cursor; count: view.stops.length }
+  FoamyCursor {
+    id: cursor
+    count: view.stops.length
+  }
 
-  function hasCursor(key) { return cursorKey === key }
-  function hover(key) { var index = stops.indexOf(key); if (index >= 0) cursor.hover(index) }
+  function hasCursor(key) {
+    return cursorKey === key
+  }
+  function hover(key) {
+    var index = stops.indexOf(key)
+    if (index >= 0)
+      cursor.hover(index)
+  }
   function rowsFor(kind) {
-    return kind === "sink" ? audio.displayAudioSinks : kind === "source" ? audio.displayAudioSources
-      : kind === "stream" ? audio.displayAudioStreams : audio.displayWirelessAudioSinks
+    return kind === "sink" ? audio.displayAudioSinks : kind === "source" ? audio.displayAudioSources : kind === "stream" ? audio.displayAudioStreams : audio.displayWirelessAudioSinks
   }
   function cursorRow() {
     var parts = cursorKey.split(":")
-    if (parts.length !== 2 || parts[0] === "section") return null
+    if (parts.length !== 2 || parts[0] === "section")
+      return null
     var node = audio.nodeFor(rowsFor(parts[0])[Number(parts[1])])
-    return node ? { kind: parts[0], node: node, target: audio.volumeTarget(parts[0], node) } : null
+    return node ? {
+      kind: parts[0],
+      node: node,
+      target: audio.volumeTarget(parts[0], node)
+    } : null
   }
   function toggleSection(name) {
-    if (name === "output") outputExpanded = !outputExpanded
-    else if (name === "input") inputExpanded = !inputExpanded
-    else if (name === "apps") appsExpanded = !appsExpanded
-    else if (name === "wireless") wirelessExpanded = !wirelessExpanded
-    else return
+    if (name === "output")
+      outputExpanded = !outputExpanded
+    else if (name === "input")
+      inputExpanded = !inputExpanded
+    else if (name === "apps")
+      appsExpanded = !appsExpanded
+    else if (name === "wireless")
+      wirelessExpanded = !wirelessExpanded
+    else
+      return
     // Bring what was just unfolded into view (it follows the section while
     // its rows are laid out).
     var section = sectionItem(name)
-    if (section && section.expanded) wheelScroll.ensureVisible(section)
+    if (section && section.expanded)
+      wheelScroll.ensureVisible(section)
   }
   function sectionItem(name) {
-    return name === "output" ? outputSection : name === "input" ? inputSection
-      : name === "apps" ? appsSection : name === "wireless" ? wirelessSection : null
+    return name === "output" ? outputSection : name === "input" ? inputSection : name === "apps" ? appsSection : name === "wireless" ? wirelessSection : null
   }
   function activateStop() {
     var key = cursorKey
-    if (key === "outputMute" || key === "volume") audio.toggleOutputMute()
-    else if (key === "inputMute") audio.toggleInputMute()
-    else if (key === "settings") audio.openSettings()
-    else if (key === "muteAll") audio.toggleAllMuted()
-    else if (key.indexOf("section:") === 0) toggleSection(key.slice(8))
-    else { var row = cursorRow(); if (row) audio.activate(row.kind, row.node) }
+    if (key === "outputMute" || key === "volume")
+      audio.toggleOutputMute()
+    else if (key === "inputMute")
+      audio.toggleInputMute()
+    else if (key === "settings")
+      audio.openSettings()
+    else if (key === "muteAll")
+      audio.toggleAllMuted()
+    else if (key.indexOf("section:") === 0)
+      toggleSection(key.slice(8))
+    else {
+      var row = cursorRow()
+      if (row)
+        audio.activate(row.kind, row.node)
+    }
   }
   function adjust(direction) {
     var key = cursorKey
@@ -116,53 +157,79 @@ PanelKeyCatcher {
       audio.setOutputVolume(audio.outputVolume + direction * step)
     } else {
       var row = cursorRow()
-      if (!row || !audio.nodeHasVolume(row.target)) return
-      if (row.kind === "wireless" && !audio.isSelected(row.kind, row.node)) return
+      if (!row || !audio.nodeHasVolume(row.target))
+        return
+      if (row.kind === "wireless" && !audio.isSelected(row.kind, row.node))
+        return
       audio.setNodeVolume(row.target, audio.nodeVolume(row.target) + direction * step, row.kind === "stream" ? 1.5 : 1)
     }
   }
   function muteStop() {
     var key = cursorKey
-    if (key === "inputMute") audio.toggleInputMute()
-    else if (key === "muteAll") audio.toggleAllMuted()
-    else { var row = cursorRow(); if (row) audio.toggleNodeMute(row.target); else audio.toggleOutputMute() }
+    if (key === "inputMute")
+      audio.toggleInputMute()
+    else if (key === "muteAll")
+      audio.toggleAllMuted()
+    else {
+      var row = cursorRow()
+      if (row)
+        audio.toggleNodeMute(row.target)
+      else
+        audio.toggleOutputMute()
+    }
   }
   function keepVisible(item) {
-    if (!item || !scroll.contentItem) return
+    if (!item || !scroll.contentItem)
+      return
     var point = item.mapToItem(scroll.contentItem, 0, 0)
     var margin = FoamyStyle.gap
-    if (point.y < scroll.contentY) scroll.contentY = Math.max(0, point.y - margin)
+    if (point.y < scroll.contentY)
+      scroll.contentY = Math.max(0, point.y - margin)
     else if (point.y + item.height > scroll.contentY + scroll.height)
       scroll.contentY = Math.min(Math.max(0, scroll.contentHeight - scroll.height), point.y + item.height - scroll.height + margin)
   }
 
-  onMoveRequested: function(dx, dy) {
+  onMoveRequested: function (dx, dy) {
     if (dy !== 0) {
-      if (!cursor.active) cursor.index = stops.indexOf("volume")
-      else cursor.move(dy)
+      if (!cursor.active)
+        cursor.index = stops.indexOf("volume")
+      else
+        cursor.move(dy)
     } else if (dx !== 0) {
-      if (!cursor.active) { cursor.index = stops.indexOf("volume"); return }
+      if (!cursor.active) {
+        cursor.index = stops.indexOf("volume")
+        return
+      }
       // The header row and every slider mirror in RTL, so visual direction wins.
       adjust(rtl ? -dx : dx)
     }
   }
   onActivateRequested: activateStop()
   onCloseRequested: audio.close()
-  onTabRequested: function(direction) { audio.switchPanel(direction) }
-  onTextKey: function(text) {
+  onTabRequested: function (direction) {
+    audio.switchPanel(direction)
+  }
+  onTextKey: function (text) {
     var key = String(text).toLowerCase()
-    if (key === "s") audio.openSettings()
-    else if (key === "m") muteStop()
-    else if (key === "o") toggleSection("output")
-    else if (key === "i") toggleSection("input")
-    else if (key === "a") toggleSection("apps")
-    else if (key === "w") toggleSection("wireless")
+    if (key === "s")
+      audio.openSettings()
+    else if (key === "m")
+      muteStop()
+    else if (key === "o")
+      toggleSection("output")
+    else if (key === "i")
+      toggleSection("input")
+    else if (key === "a")
+      toggleSection("apps")
+    else if (key === "w")
+      toggleSection("wireless")
   }
 
   // The firewall action the buttons last started (its button spins while busy).
   property string firewallPending: ""
   function firewall(action) {
-    if (audio.firewallBusy) return
+    if (audio.firewallBusy)
+      return
     firewallPending = action
     audio.firewallAction(action)
   }
@@ -188,7 +255,10 @@ PanelKeyCatcher {
     meta: view.audio.outputLabel || FoamyI18n.t("No output devices")
     settingsHasCursor: view.hasCursor("settings")
     onSettingsClicked: view.audio.openSettings()
-    onSettingsHovered: function(hovered) { if (hovered) view.hover("settings") }
+    onSettingsHovered: function (hovered) {
+      if (hovered)
+        view.hover("settings")
+    }
     trailing: [
       FoamyAction {
         iconName: view.audio.outputMuted ? "volume-x" : "volume-2"
@@ -196,7 +266,8 @@ PanelKeyCatcher {
         enabled: view.audio.hasOutput
         hasCursor: view.hasCursor("outputMute")
         tooltipText: FoamyI18n.t(view.audio.outputMuted ? "Unmute output" : "Mute output")
-        onHoveredChanged: if (hovered) view.hover("outputMute")
+        onHoveredChanged: if (hovered)
+          view.hover("outputMute")
         onClicked: view.audio.toggleOutputMute()
       },
       FoamyAction {
@@ -205,67 +276,74 @@ PanelKeyCatcher {
         enabled: view.audio.hasInput
         hasCursor: view.hasCursor("inputMute")
         tooltipText: FoamyI18n.t(view.audio.inputMuted ? "Unmute microphone" : "Mute microphone")
-        onHoveredChanged: if (hovered) view.hover("inputMute")
+        onHoveredChanged: if (hovered)
+          view.hover("inputMute")
         onClicked: view.audio.toggleInputMute()
       }
     ]
-      // Hero slot: the output volume (numeral) and its slider, one cursor
-      // stop. The cursor rings the slider's thumb; no filled row behind it.
-      Item {
-        id: hero
-        Layout.fillWidth: true
-        implicitHeight: heroRow.implicitHeight + FoamyStyle.gap * 2
-        HoverHandler { onHoveredChanged: if (hovered) view.hover("volume") }
-        RowLayout {
-          id: heroRow
-          anchors.fill: parent
-          anchors.leftMargin: FoamyStyle.gap
-          anchors.rightMargin: FoamyStyle.gap
-          spacing: FoamyStyle.gapLarge
-          Item {
-            Layout.alignment: Qt.AlignVCenter
-            implicitWidth: heroNumber.implicitWidth + (heroUnit.visible ? FoamyStyle.gapTiny + heroUnit.implicitWidth : 0)
-            implicitHeight: heroNumber.implicitHeight
-            opacity: view.audio.outputMuted ? 0.5 : 1
-            Text {
-              id: heroNumber
-              anchors.left: parent.left
-              text: view.audio.hasOutput ? FoamyI18n.number(Math.round(outputSlider.value * 100)) : "—"
-              textFormat: Text.PlainText
-              color: FoamyPalette.text
-              font.family: FoamyStyle.fontFamily
-              font.pixelSize: FoamyStyle.font.numeral
-              font.weight: Font.DemiBold
-              font.letterSpacing: -2
-            }
-            Text {
-              id: heroUnit
-              visible: view.audio.hasOutput
-              anchors.left: heroNumber.right
-              anchors.leftMargin: FoamyStyle.gapTiny
-              anchors.baseline: heroNumber.baseline
-              text: "%"
-              textFormat: Text.PlainText
-              color: FoamyPalette.secondaryText
-              font.family: FoamyStyle.fontFamily
-              font.pixelSize: FoamyStyle.font.display
-            }
+    // Hero slot: the output volume (numeral) and its slider, one cursor
+    // stop. The cursor rings the slider's thumb; no filled row behind it.
+    Item {
+      id: hero
+      Layout.fillWidth: true
+      implicitHeight: heroRow.implicitHeight + FoamyStyle.gap * 2
+      HoverHandler {
+        onHoveredChanged: if (hovered)
+          view.hover("volume")
+      }
+      RowLayout {
+        id: heroRow
+        anchors.fill: parent
+        anchors.leftMargin: FoamyStyle.gap
+        anchors.rightMargin: FoamyStyle.gap
+        spacing: FoamyStyle.gapLarge
+        Item {
+          Layout.alignment: Qt.AlignVCenter
+          implicitWidth: heroNumber.implicitWidth + (heroUnit.visible ? FoamyStyle.gapTiny + heroUnit.implicitWidth : 0)
+          implicitHeight: heroNumber.implicitHeight
+          opacity: view.audio.outputMuted ? 0.5 : 1
+          Text {
+            id: heroNumber
+            anchors.left: parent.left
+            text: view.audio.hasOutput ? FoamyI18n.number(Math.round(outputSlider.value * 100)) : "—"
+            textFormat: Text.PlainText
+            color: FoamyPalette.text
+            font.family: FoamyStyle.fontFamily
+            font.pixelSize: FoamyStyle.font.numeral
+            font.weight: Font.DemiBold
+            font.letterSpacing: -2
           }
-          AudioSlider {
-            id: outputSlider
-            Layout.fillWidth: true
-            Layout.alignment: Qt.AlignVCenter
-            label: FoamyI18n.t("Volume")
-            hasCursor: view.hasCursor("volume")
-            enabled: view.audio.hasOutput
-            value: view.audio.hasOutput ? view.audio.outputVolume : 0
-            onMoved: view.audio.setOutputVolume(value)
+          Text {
+            id: heroUnit
+            visible: view.audio.hasOutput
+            anchors.left: heroNumber.right
+            anchors.leftMargin: FoamyStyle.gapTiny
+            anchors.baseline: heroNumber.baseline
+            text: "%"
+            textFormat: Text.PlainText
+            color: FoamyPalette.secondaryText
+            font.family: FoamyStyle.fontFamily
+            font.pixelSize: FoamyStyle.font.display
           }
         }
+        AudioSlider {
+          id: outputSlider
+          Layout.fillWidth: true
+          Layout.alignment: Qt.AlignVCenter
+          label: FoamyI18n.t("Volume")
+          hasCursor: view.hasCursor("volume")
+          enabled: view.audio.hasOutput
+          value: view.audio.hasOutput ? view.audio.outputVolume : 0
+          onMoved: view.audio.setOutputVolume(value)
+        }
       }
+    }
   }
 
-  FoamyWheelScroll { id: wheelScroll; target: scroll }
+  FoamyWheelScroll {
+    id: wheelScroll
+    target: scroll
+  }
   readonly property alias wheel: wheelScroll
   Flickable {
     id: scroll
@@ -281,7 +359,9 @@ PanelKeyCatcher {
     boundsBehavior: Flickable.StopAtBounds
     interactive: contentHeight > height
     onContentHeightChanged: contentY = Math.max(0, Math.min(contentY, contentHeight - height))
-    Controls.ScrollBar.vertical: Controls.ScrollBar { policy: Controls.ScrollBar.AsNeeded }
+    Controls.ScrollBar.vertical: Controls.ScrollBar {
+      policy: Controls.ScrollBar.AsNeeded
+    }
 
     Column {
       id: listColumn
@@ -299,7 +379,9 @@ PanelKeyCatcher {
         emptyText: FoamyI18n.t("No output devices")
         Repeater {
           model: view.outputExpanded ? view.audio.displayAudioSinks : []
-          Device { kind: "sink" }
+          Device {
+            kind: "sink"
+          }
         }
       }
       Section {
@@ -312,7 +394,12 @@ PanelKeyCatcher {
         errorText: view.audio.inputMeterError ? FoamyI18n.t(view.audio.inputMeterError) : ""
         Repeater {
           model: view.inputExpanded ? view.audio.displayAudioSources : []
-          Device { kind: "source"; showLevelMeter: true; level: view.audio.inputMuted ? 0 : view.audio.inputPeak; levelDescription: FoamyI18n.t("Microphone level") }
+          Device {
+            kind: "source"
+            showLevelMeter: true
+            level: view.audio.inputMuted ? 0 : view.audio.inputPeak
+            levelDescription: FoamyI18n.t("Microphone level")
+          }
         }
       }
       Section {
@@ -324,7 +411,10 @@ PanelKeyCatcher {
         emptyText: FoamyI18n.t("No apps playing audio")
         Repeater {
           model: view.appsExpanded ? view.audio.displayAudioStreams : []
-          Device { kind: "stream"; maximum: 1.5 }
+          Device {
+            kind: "stream"
+            maximum: 1.5
+          }
         }
       }
       Section {
@@ -334,13 +424,14 @@ PanelKeyCatcher {
         expanded: view.wirelessExpanded
         empty: view.audio.airplayScanState === "error" || view.audio.displayWirelessAudioSinks.length === 0
         errorText: view.audio.airplayScanState === "error" ? FoamyI18n.t(view.audio.airplayError || "AirPlay discovery failed") : ""
-        emptyText: view.audio.airplayScanState === "error" ? ""
-          : view.audio.airplayScanning ? FoamyI18n.t("Looking for speakers") + view.scanDots
-          : view.audio.airplayStopping ? FoamyI18n.t("Returning to local audio")
-          : FoamyI18n.t("No AirPlay speakers found")
+        emptyText: view.audio.airplayScanState === "error" ? "" : view.audio.airplayScanning ? FoamyI18n.t("Looking for speakers") + view.scanDots : view.audio.airplayStopping ? FoamyI18n.t("Returning to local audio") : FoamyI18n.t("No AirPlay speakers found")
         Repeater {
           model: view.wirelessExpanded ? view.audio.displayWirelessAudioSinks : []
-          Device { kind: "wireless"; multiSelect: true; enabled: !view.audio.airplaySelecting }
+          Device {
+            kind: "wireless"
+            multiSelect: true
+            enabled: !view.audio.airplaySelecting
+          }
         }
       }
     }
@@ -367,7 +458,8 @@ PanelKeyCatcher {
       foreground: FoamyPalette.secondaryText
       enabled: view.audio.hasOutput || view.audio.hasInput
       hasCursor: view.hasCursor("muteAll")
-      onHoveredChanged: if (hovered) view.hover("muteAll")
+      onHoveredChanged: if (hovered)
+        view.hover("muteAll")
       onClicked: view.audio.toggleAllMuted()
     }
   }
@@ -423,12 +515,12 @@ PanelKeyCatcher {
           busy: view.audio.firewallBusy === true && view.firewallPending === "open"
           actionEnabled: !view.audio.firewallBusy
           enabled: view.audio.airplayPeerCount > 0 && view.audio.firewallState !== "open"
-          tooltipText: view.audio.airplayPeerCount > 0
-            ? FoamyI18n.tn("Allow the network of %1 speakers", view.audio.airplayPeerCount)
-            : FoamyI18n.t("No AirPlay speakers found yet.")
+          tooltipText: view.audio.airplayPeerCount > 0 ? FoamyI18n.tn("Allow the network of %1 speakers", view.audio.airplayPeerCount) : FoamyI18n.t("No AirPlay speakers found yet.")
           onClicked: view.firewall("open")
         }
-        Item { Layout.fillWidth: true }
+        Item {
+          Layout.fillWidth: true
+        }
         FoamyButton {
           objectName: "audioFirewallRemove"
           focusable: true
@@ -476,7 +568,8 @@ PanelKeyCatcher {
       hasCursor: view.hasCursor("section:" + section.name)
       onHovered: view.hover("section:" + section.name)
       onToggled: view.toggleSection(section.name)
-      onHasCursorChanged: if (hasCursor) view.keepVisible(sectionHeader)
+      onHasCursorChanged: if (hasCursor)
+        view.keepVisible(sectionHeader)
     }
     Text {
       visible: section.expanded && section.errorText !== ""
@@ -532,8 +625,11 @@ PanelKeyCatcher {
     step: 0.01
     hasCursor: view.hasCursor(key)
     onHovered: view.hover(key)
-    onHasCursorChanged: if (hasCursor) view.keepVisible(device)
+    onHasCursorChanged: if (hasCursor)
+      view.keepVisible(device)
     onActivated: view.audio.activate(kind, node)
-    onVolumeMoved: function(value) { view.audio.setNodeVolume(target, value, maximum) }
+    onVolumeMoved: function (value) {
+      view.audio.setNodeVolume(target, value, maximum)
+    }
   }
 }

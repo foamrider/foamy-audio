@@ -26,19 +26,21 @@ FoamyCursorSurface {
   property real level: 0
   property string levelDescription: ""
   readonly property bool levelVisible: showLevelMeter && selected
-  signal activated()
+  signal activated
   signal volumeMoved(real value)
 
   implicitHeight: FoamyStyle.rowHeight + FoamyStyle.gap
   current: selected && !multiSelect
   opacity: enabled ? 1 : FoamyStyle.disabledOpacity
-  onClicked: if (enabled) activated()
+  onClicked: if (enabled)
+    activated()
 
   Accessible.role: multiSelect ? Accessible.CheckBox : Accessible.Button
   Accessible.name: label
   Accessible.checkable: multiSelect
   Accessible.checked: multiSelect && selected
-  Accessible.onPressAction: if (enabled) activated()
+  Accessible.onPressAction: if (enabled)
+    activated()
 
   RowLayout {
     anchors.fill: parent
@@ -126,7 +128,9 @@ FoamyCursorSurface {
       label: root.label
       maximum: root.maximum
       step: root.step
-      onMoved: function(value) { root.volumeMoved(value) }
+      onMoved: function (value) {
+        root.volumeMoved(value)
+      }
     }
     // Every row with a volume keeps the meter's slot, so the percentages of
     // all sections line up; only the selected input shows the meter.
@@ -147,7 +151,11 @@ FoamyCursorSurface {
         height: parent.height * Math.max(0, Math.min(1, root.level))
         radius: parent.radius
         color: Commons.Color.accent
-        Behavior on height { NumberAnimation { duration: FoamyMotion.duration(70) } }
+        Behavior on height {
+          NumberAnimation {
+            duration: FoamyMotion.duration(70)
+          }
+        }
       }
     }
   }

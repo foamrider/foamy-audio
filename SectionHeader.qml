@@ -8,7 +8,7 @@ FoamyCursorSurface {
   id: root
   property string label: ""
   property bool expanded: true
-  signal toggled()
+  signal toggled
   implicitHeight: FoamyStyle.controlHeight
   Accessible.role: Accessible.Button
   Accessible.name: label
