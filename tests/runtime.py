@@ -33,6 +33,7 @@ if not os.environ.get("FOAMY_HOST_45"):
     os.environ["FOAMY_HOST_45"] = str(Path(_root) / "shell") if _root else "/usr/share/omarchy/shell"
 sys.path.insert(0, str(KIT / "preview"))
 import harness  # noqa: E402
+import hostenv  # noqa: E402
 
 
 # Fails like pactl and friends without a server; the AirPlay helper reports
@@ -105,7 +106,45 @@ def run(host, lang):
     return ok
 
 
+# The helper as a fake: `status` reports a session a crashed shell left
+# active, `stop` succeeds; every call is logged.
+LEFTOVER_HELPER = """#!/bin/sh
+printf '%s\\n' "$*" >> "$FOAMY_OUT/helper.log"
+case "$1 $2" in
+  "airplay status") echo '{"ok":true,"active":true,"error":"","peers":[],"selectedNames":[]}' ;;
+  "airplay stop") echo '{"ok":true,"error":""}' ;;
+  *) echo '{"ok":false,"error":"fake helper: unexpected call"}'; exit 1 ;;
+esac
+"""
+
+
+def run_leftover():
+    """Discovery a crashed shell left running stops only under a local output."""
+    r = harness.Run("4.5", (PLUGIN / "tests/qml/Leftover.qml").read_text(), plugin=None, prefix="fa-lo-",
+                    fakebin={name: FAKE for name in FAKES})
+    plugin = hostenv.fake_helper_plugin(PLUGIN, r.base / "plugin-copy", "foamy-audio-helper", LEFTOVER_HELPER)
+    (r.root / "plugin").symlink_to(plugin, target_is_directory=True)
+    r.env.update(FOAMY_FAKE_ERROR=FAKE_ERROR)
+    r.run(60)
+    calls_log = r.out / "helper.log"
+    calls = calls_log.read_text().splitlines() if calls_log.exists() else []
+    failures = r.failures()
+    if calls != ["airplay status", "airplay stop --skip-restore"]:
+        failures.append(f"FOAMY FAIL helper calls: {calls}")
+    if r.host_commands():
+        failures.append(f"FOAMY FAIL host commands ran without a fake: {r.host_commands()}")
+    result = next((line.split("FOAMY RESULT ", 1)[1] for line in r.log.splitlines() if "FOAMY RESULT" in line),
+                  "no result")
+    ok = "FOAMY DONE" in r.log and not failures
+    print(f"{'PASS' if ok else 'FAIL'} runtime leftover discovery: {result}")
+    if not ok:
+        print("\n".join("    " + line for line in (failures or r.log.splitlines()[-40:])))
+    else:
+        r.cleanup()
+    return ok
+
+
 if __name__ == "__main__":
     cases = [("4.5", "en"), ("4.5", "no"), ("4.5", "ar")]
-    results = [run(host, lang) for host, lang in cases]
+    results = [run(host, lang) for host, lang in cases] + [run_leftover()]
     raise SystemExit(0 if all(results) else 1)

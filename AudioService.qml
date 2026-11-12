@@ -402,6 +402,19 @@ Singleton {
     }
   }
 
+  // A session a crashed or killed shell left behind (teardown() never ran):
+  // `status` reports it active while no popup wants it, and nothing would stop
+  // it until the next open and close. Stop it the way release() does, but only
+  // once the default output is known and is not AirPlay: at startup the sink
+  // can still be null or unbound, and `stop` would cut an AirPlay output that
+  // is playing. Returns whether a stop started.
+  function stopUnwantedDiscovery(output) {
+    if (!airplayDiscoveryActive || wanted || airplayBusy || airplayStopping || airplayHelperUnavailable) return false
+    if (!output || output.ready !== true || Model.isAirplaySink(output)) return false
+    stopAirplayDiscovery(null, true)
+    return true
+  }
+
   function parseAirplayPayload(raw) {
     try {
       var payload = JSON.parse(String(raw || "").trim())
@@ -507,6 +520,15 @@ Singleton {
       }
     }
     if (!airplayDiscoveryActive && wanted && !airplayStartProc.running) startAirplayScan()
+    else stopUnwantedDiscovery(sink)
+  }
+
+  // The default output's properties arrive after the node: re-check a
+  // leftover session once they are bound (onSinkChanged covers a new sink).
+  Connections {
+    target: root.sink
+    ignoreUnknownSignals: true
+    function onReadyChanged() { root.stopUnwantedDiscovery(root.sink) }
   }
 
   function airplaySelected(node) {

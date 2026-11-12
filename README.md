@@ -37,7 +37,8 @@ Optional:
   to remove it from the group; removing the last one returns to local audio.
   Each speaker keeps its own level. Discovery runs while the panel is open and
   stops when it closes with no AirPlay output selected (and when the plugin is
-  disabled or removed).
+  disabled or removed). A session a crashed shell left running is stopped
+  after the next start, once the default output is known and isn't AirPlay.
 - The bar volume and mute follow the physical output behind a speaker tuning
   or EasyEffects, the same sink the volume keys use. It is re-resolved when
   the output, the PipeWire graph or EasyEffects' output changes; nothing polls.
