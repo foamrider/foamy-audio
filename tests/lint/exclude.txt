@@ -1,0 +1,1 @@
+tests/qml/*  qmllint  # harness scenes: their qs.Ui and "harness" imports exist only in the harness's staged copy
