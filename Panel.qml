@@ -3,7 +3,6 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
-import qs.Commons as Commons
 import qs.Ui
 import "kit"
 import "Model.js" as Model
@@ -155,8 +154,9 @@ Panel {
     var properties = Model.nodeProps(node)
     var supplied = appIconSource(properties["application.icon-name"])
     if (supplied) return supplied
-    // Some streams omit an icon or desktop ID; resolve the installed app by identity.
-    DesktopEntries.applications.values
+    // Some streams omit an icon or desktop ID; resolve the installed app by
+    // identity. Reading the list makes a binding re-run once the entries load.
+    void DesktopEntries.applications.values
     var candidates = [properties["application.id"], properties["application.process.binary"],
       properties["application.name"], streamLabel(node), node ? node.name : ""]
     for (var i = 0; i < candidates.length; i++) {

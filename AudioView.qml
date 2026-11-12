@@ -93,7 +93,7 @@ PanelKeyCatcher {
     // Bring what was just unfolded into view (it follows the section while
     // its rows are laid out).
     var section = sectionItem(name)
-    if (section && section.expanded) wheel.ensureVisible(section)
+    if (section && section.expanded) wheelScroll.ensureVisible(section)
   }
   function sectionItem(name) {
     return name === "output" ? outputSection : name === "input" ? inputSection
@@ -265,8 +265,8 @@ PanelKeyCatcher {
       }
   }
 
-  FoamyWheelScroll { id: wheel; target: scroll }
-  readonly property alias wheel: wheel
+  FoamyWheelScroll { id: wheelScroll; target: scroll }
+  readonly property alias wheel: wheelScroll
   Flickable {
     id: scroll
     visible: !view.editing
