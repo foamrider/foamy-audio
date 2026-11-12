@@ -48,6 +48,7 @@
   "Choose a local output or AirPlay speakers, not both.": "Velg en lokal utgang eller AirPlay-høyttalere, ikke begge.",
   "The local output is no longer available.": "Den lokale utgangen er ikke lenger tilgjengelig.",
   "An AirPlay speaker is no longer available. Reopen the panel.": "En AirPlay-høyttaler er ikke lenger tilgjengelig. Åpne panelet på nytt.",
+  "An AirPlay speaker's name can't be used in a group.": "Navnet til en AirPlay-høyttaler kan ikke brukes i en gruppe.",
   "No local output is available": "Ingen lokal utgang er tilgjengelig",
   "Microphone level unavailable": "Mikrofonnivå er utilgjengelig",
   "AirPlay speaker": "AirPlay-høyttaler",

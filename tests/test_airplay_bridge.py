@@ -183,6 +183,18 @@ class AirPlayBridgeTest(unittest.TestCase):
                                         "selectedNames": ["raop_sink.a", "raop_sink.b"]})
         self.assertNothingLeft()
 
+    def test_a_speaker_name_that_would_split_the_module_arguments_is_refused(self):
+        # PipeWire's raop_sink.<host>.<ip>.<port> with Avahi's escape for a space
+        # in the host name; pactl would pass the backslash to pipewire-pulse,
+        # which reads it as an escape and changes the name.
+        odd = "raop_sink.Living\\032Room.local.192.0.2.7.7000"
+        self.fakes.queue("pactl", json.dumps([{"index": 70, "name": "raop_sink.a"}, {"index": 71, "name": odd}]))
+        result = self.run_bridge("select", "raop_sink.a", odd)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(reply(result), {"ok": False, "error": "An AirPlay speaker's name can't be used in a group."})
+        self.assertEqual(self.fakes.argvs(), [SINKS])
+        self.assertFalse(self.state.exists())
+
     def test_a_group_that_cannot_become_the_default_is_removed_again(self):
         sinks = [{"index": 70, "name": "raop_sink.a"}, {"index": 71, "name": "raop_sink.b"}]
         self.fakes.queue("pactl", json.dumps(sinks), "88\n", "alsa_output.local", {"stderr": "Failure: busy\n", "code": 1},
