@@ -75,7 +75,9 @@ def ipc_status(run):
 
 def run(host, lang):
     shell = (PLUGIN / "tests/qml/Runtime.qml").read_text()
-    r = harness.Run(host, shell, plugin=PLUGIN, language=lang, prefix=f"foamy-audio-runtime-{host}-{lang}-",
+    # A short prefix: qs's IPC socket lives under the run dir, and a unix socket
+    # path past 107 bytes fails to bind ("Failed to start IPC server").
+    r = harness.Run(host, shell, plugin=PLUGIN, language=lang, prefix=f"fa-rt-{lang}-",
                     fakebin={name: FAKE for name in FAKES})
     r.env.update(FOAMY_LANG=lang, FOAMY_HOLD_MS="3000")
     isolate(r.env, r.host)
