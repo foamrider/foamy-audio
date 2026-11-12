@@ -227,17 +227,22 @@ class MicrophonePeakTest(unittest.TestCase):
         self.samples([[0.125] * 800], idle=6)
         proc = self.start("fixture", "AUX0", "--passive")
         try:
-            deadline = time.monotonic() + 9
-            levels = []
-            while time.monotonic() < deadline:
-                levels.append(float(self.levels(proc, 1, wait=2)[0]))
-                if len(levels) > 1 and levels[-1] == 0.5:
-                    break
-            self.assertEqual(levels[0], 0.5)
-            self.assertIn(0.0, levels)
-            self.assertEqual(levels[-1], 0.5)
-            # About four zero levels a second while idle.
-            self.assertGreater(levels.count(0.0), 15)
+            # Until the fake's first block arrives (its Python start can take
+            # longer than a tick on a loaded machine) the idle meter reports 0.
+            def until_data(limit):
+                levels = []
+                deadline = time.monotonic() + limit
+                while time.monotonic() < deadline:
+                    levels.append(float(self.levels(proc, 1, wait=2)[0]))
+                    if levels[-1] == 0.5:
+                        return levels
+                self.fail(f"no 0.5 level within {limit} s: {levels}")
+
+            self.assertLessEqual(set(until_data(30)[:-1]), {0.0}, "only zero levels before the first block")
+            idle = until_data(30)
+            self.assertEqual(set(idle[:-1]), {0.0}, "only zero levels while the fake is idle")
+            # About four zero levels a second through the fake's 6 s idle.
+            self.assertGreater(len(idle) - 1, 15)
             proc.terminate()
             self.assertEqual(proc.wait(timeout=3), 0)
         finally:
