@@ -1,5 +1,5 @@
 .pragma library
-// foamy-kit 0.9.0 ae09e5eab90c9b3e86d63168e1637343b9e66c02fff5db7e72a3960b9972f803 — do not edit; change foamy-kit and run sync
+// foamy-kit 0.9.0 82e646f371aaa05336883bb248832de06feb982a83967d1d2cfe065f2b3a9e07 — do not edit; change foamy-kit and run sync
 
 // Size bounds for text a plugin hands to a sink that has none of its own.
 //
@@ -11,6 +11,11 @@
 //   import "kit/FoamyText.js" as FoamyText
 //   bar.showTooltip(button, FoamyText.tooltip(player.title + "\n" + player.artist))
 //   FoamyText.cap(text, 3, 60)                      // 3 lines of at most 60 characters
+//
+// Give a list one item per line ("Mouse 82%\nKeyboard 14%"), not one line
+// joined with " · ": tooltip() keeps 6 lines and cuts each line on its own,
+// so a long item loses only its own end; in one joined line everything after
+// the 100th character is gone, whole items included.
 //
 // cap(text, maxLines, maxChars): at most maxLines lines of at most maxChars
 // characters each. A cut line ends in "…" (within maxChars), and so does the
