@@ -47,6 +47,7 @@ ShellRoot {
   }
 
   MockBar { id: mockBar; moduleName: "foamy.audio" }
+  FoamyWait { id: wait }
 
   Component.onCompleted: Qt.callLater(stepOne)
 
@@ -87,102 +88,85 @@ ShellRoot {
     eq(first.popup.bodyItem, null, "popup body is lazy")
     eq(Audio.AudioService.demanded, false, "no demand while closed")
     first.open()
-    stepTwo.start()
+    wait.waitFor(function() { return first.popup.bodyItem !== null }, 10000, stepTwo, "body built on open")
   }
 
-  Timer {
-    id: stepTwo
-    interval: 600
-    onTriggered: {
-      var first = panels.itemAt(0)
-      var view = first.popup.bodyItem
-      check(view !== null, "body built on open")
-      eq(Audio.AudioService.demanded, true, "open popup raises demand")
-      // Discovery ran the native helper (FoamyNative) and got a JSON reply
-      // (no PipeWire is reachable here, so usually an error from pactl).
-      eq(Audio.AudioService.airplayHelperUnavailable, false, "AirPlay helper available")
-      check(Audio.AudioService.airplayError !== "AirPlay helper returned invalid data",
-        "AirPlay helper replied in JSON: " + Audio.AudioService.airplayScanState + " " + Audio.AudioService.airplayError)
-      console.log("FOAMY AIRPLAY " + Audio.AudioService.airplayScanState + " " + Audio.AudioService.airplayError)
-      if (!view) { shell.finish(); return }
-      eq(view.cursorKey, "", "no cursor highlight on open")
-      view.moveRequested(0, 1)
-      eq(view.cursorKey, "volume", "first move lands on the volume slider")
-      // Sliders (DESIGN.md "Sliders"): the cursor rings the header slider's
-      // thumb; no filled row behind it.
-      var slider = findType(view, function(item) { return item.hasCursor !== undefined && item.mini !== undefined })
-      check(slider !== null, "header slider found")
-      if (slider) {
-        eq(slider.hasCursor, true, "the cursor on the volume rings the slider thumb")
-        var hero = slider.parent ? slider.parent.parent : null
-        eq(hero && hero.color !== undefined, false, "no filled row behind the header slider")
-      }
-      view.moveRequested(0, -1)
-      eq(view.cursorKey, "settings", "up from the slider reaches the header")
-      view.moveRequested(-1, 0)
-      eq(view.cursorKey, FoamyI18n.rightToLeft ? "settings" : "inputMute", "h moves along the header in reading order")
-      shell.key(view, "o")
-      eq(view.outputExpanded, false, "o folds Output")
-      shell.key(view, "w")
-      eq(view.wirelessExpanded, true, "w unfolds Wireless")
-      check(view.wheel._following === view.sectionItem("wireless"), "unfolding scrolls Wireless into view")
-      eq(view.LayoutMirroring.enabled, shell.lang === "ar", "popup body mirrors in RTL only")
-      var titles = { en: "Audio", no: "Lyd", ar: "Audio" }
-      if (shell.lang !== "ar") eq(first.popup.bodyItem.children.length > 0 ? FoamyI18n.t("Audio") : "", titles[shell.lang], "title translated")
-      eq(FoamyI18n.tn("Allow the network of %1 speakers", 1), shell.lang === "no" ? "Tillat nettverket til 1 høyttaler" : "Allow the network of 1 speaker", "plural")
-      shell.key(view, "s")
-      eq(first.editingSettings, true, "s opens Settings")
-      eq(view.blocked, true, "settings page owns the keys")
-      // Firewall actions are form buttons: Verify, Apply (primary), Remove (destructive).
-      var verify = findNamed(view, "audioFirewallVerify")
-      var apply = findNamed(view, "audioFirewallApply")
-      var remove = findNamed(view, "audioFirewallRemove")
-      check(verify !== null && apply !== null && remove !== null, "firewall buttons exist")
-      if (verify && apply && remove) {
-        eq(verify.kind + "/" + apply.kind + "/" + remove.kind, "secondary/primary/destructive", "firewall button kinds")
-        eq(verify.focusable && apply.focusable && remove.focusable, true, "firewall buttons join the Tab chain")
-        eq(apply.enabled, false, "Apply waits for speakers")
-      }
-      first.save("showPercentage", false)
-      eq(mockBar.saved.length, 1, "setting saved inline")
-      if (mockBar.saved.length === 1) {
-        eq(mockBar.saved[0].id, "foamy.audio", "saved to the widget's own entry")
-        eq(mockBar.saved[0].settings.showPercentage, false, "saved value")
-        eq(mockBar.saved[0].settings.extra, "kept", "unknown keys kept")
-      }
-      first.closeSettings()
-      eq(view.blocked, false, "back from Settings")
-      first.close()
-      stepThree.start()
+  function stepTwo() {
+    var first = panels.itemAt(0)
+    var view = first.popup.bodyItem
+    check(view !== null, "body built on open")
+    eq(Audio.AudioService.demanded, true, "open popup raises demand")
+    // Discovery ran the native helper (FoamyNative) and got a JSON reply
+    // (no PipeWire is reachable here, so usually an error from pactl).
+    eq(Audio.AudioService.airplayHelperUnavailable, false, "AirPlay helper available")
+    check(Audio.AudioService.airplayError !== "AirPlay helper returned invalid data",
+      "AirPlay helper replied in JSON: " + Audio.AudioService.airplayScanState + " " + Audio.AudioService.airplayError)
+    console.log("FOAMY AIRPLAY " + Audio.AudioService.airplayScanState + " " + Audio.AudioService.airplayError)
+    if (!view) { shell.finish(); return }
+    eq(view.cursorKey, "", "no cursor highlight on open")
+    view.moveRequested(0, 1)
+    eq(view.cursorKey, "volume", "first move lands on the volume slider")
+    // Sliders (DESIGN.md "Sliders"): the cursor rings the header slider's
+    // thumb; no filled row behind it.
+    var slider = findType(view, function(item) { return item.hasCursor !== undefined && item.mini !== undefined })
+    check(slider !== null, "header slider found")
+    if (slider) {
+      eq(slider.hasCursor, true, "the cursor on the volume rings the slider thumb")
+      var hero = slider.parent ? slider.parent.parent : null
+      eq(hero && hero.color !== undefined, false, "no filled row behind the header slider")
     }
+    view.moveRequested(0, -1)
+    eq(view.cursorKey, "settings", "up from the slider reaches the header")
+    view.moveRequested(-1, 0)
+    eq(view.cursorKey, FoamyI18n.rightToLeft ? "settings" : "inputMute", "h moves along the header in reading order")
+    shell.key(view, "o")
+    eq(view.outputExpanded, false, "o folds Output")
+    shell.key(view, "w")
+    eq(view.wirelessExpanded, true, "w unfolds Wireless")
+    check(view.wheel._following === view.sectionItem("wireless"), "unfolding scrolls Wireless into view")
+    eq(view.LayoutMirroring.enabled, shell.lang === "ar", "popup body mirrors in RTL only")
+    var titles = { en: "Audio", no: "Lyd", ar: "Audio" }
+    if (shell.lang !== "ar") eq(first.popup.bodyItem.children.length > 0 ? FoamyI18n.t("Audio") : "", titles[shell.lang], "title translated")
+    eq(FoamyI18n.tn("Allow the network of %1 speakers", 1), shell.lang === "no" ? "Tillat nettverket til 1 høyttaler" : "Allow the network of 1 speaker", "plural")
+    shell.key(view, "s")
+    eq(first.editingSettings, true, "s opens Settings")
+    eq(view.blocked, true, "settings page owns the keys")
+    // Firewall actions are form buttons: Verify, Apply (primary), Remove (destructive).
+    var verify = findNamed(view, "audioFirewallVerify")
+    var apply = findNamed(view, "audioFirewallApply")
+    var remove = findNamed(view, "audioFirewallRemove")
+    check(verify !== null && apply !== null && remove !== null, "firewall buttons exist")
+    if (verify && apply && remove) {
+      eq(verify.kind + "/" + apply.kind + "/" + remove.kind, "secondary/primary/destructive", "firewall button kinds")
+      eq(verify.focusable && apply.focusable && remove.focusable, true, "firewall buttons join the Tab chain")
+      eq(apply.enabled, false, "Apply waits for speakers")
+    }
+    first.save("showPercentage", false)
+    eq(mockBar.saved.length, 1, "setting saved inline")
+    if (mockBar.saved.length === 1) {
+      eq(mockBar.saved[0].id, "foamy.audio", "saved to the widget's own entry")
+      eq(mockBar.saved[0].settings.showPercentage, false, "saved value")
+      eq(mockBar.saved[0].settings.extra, "kept", "unknown keys kept")
+    }
+    first.closeSettings()
+    eq(view.blocked, false, "back from Settings")
+    first.close()
+    eq(Audio.AudioService.demanded, false, "closing releases demand")
+    wait.waitFor(function() { return !Audio.AudioService.wanted }, 10000, stepThree, "discovery released after the delay")
   }
 
-  Timer {
-    id: stepThree
-    interval: 900
-    onTriggered: {
-      eq(Audio.AudioService.demanded, false, "closing releases demand")
-      eq(Audio.AudioService.wanted, false, "discovery released after the delay")
-      eq(panels.itemAt(0).displayAudioSinks.length, 0, "rows dropped while closed")
-      airplayWait.start()
-    }
+  function stepThree() {
+    eq(panels.itemAt(0).displayAudioSinks.length, 0, "rows dropped while closed")
+    wait.waitFor(function() { return !Audio.AudioService.airplayScanning }, 30000, airplaySettled, "discovery settles")
   }
 
   // tests/runtime.py puts fakes in front of pactl and the other audio tools:
   // the discovery the popup started must have failed on the fake (the last
   // line of its stderr), never on a real pactl reaching a server.
-  Timer {
-    id: airplayWait
-    interval: 100
-    repeat: true
-    property int ticks: 0
-    onTriggered: {
-      if (Audio.AudioService.airplayScanning && ++ticks < 300) return
-      stop()
-      eq(Audio.AudioService.airplayScanState, "error", "discovery failed without an audio server")
-      eq(Audio.AudioService.airplayError, Quickshell.env("FOAMY_FAKE_ERROR"), "discovery ran the fake pactl")
-      shell.floodMeter()
-    }
+  function airplaySettled() {
+    eq(Audio.AudioService.airplayScanState, "error", "discovery failed without an audio server")
+    eq(Audio.AudioService.airplayError, Quickshell.env("FOAMY_FAKE_ERROR"), "discovery ran the fake pactl")
+    shell.floodMeter()
   }
 
   // The microphone meter's helper runs as long as the popup is open: a helper
@@ -201,22 +185,13 @@ ShellRoot {
     eq(meterProc.running, false, "meter idle while closed")
     meterProc.command = ["bash", "-c", "head -c 33554432 /dev/zero | tr '\\0' x >&2; exit 3"]
     meterProc.running = true
-    floodWait.start()
+    wait.waitFor(function() { return !shell.meterProc.running }, 30000, flooded, "flooding helper drained and exited")
   }
-  Timer {
-    id: floodWait
-    interval: 100
-    repeat: true
-    property int ticks: 0
-    onTriggered: {
-      if (shell.meterProc.running && ++ticks < 300) return
-      stop()
-      eq(shell.meterProc.running, false, "flooding helper drained and exited")
-      eq(shell.meter.stderrHead.length, shell.meter.stderrLimit, "meter keeps only the head of a stderr flood")
-      eq(shell.meter.stderrHead.replace(/x/g, ""), "", "kept head is the helper's output")
-      eq(shell.meter.failure, "", "a closed meter reports no failure")
-      shell.finish()
-    }
+  function flooded() {
+    eq(shell.meter.stderrHead.length, shell.meter.stderrLimit, "meter keeps only the head of a stderr flood")
+    eq(shell.meter.stderrHead.replace(/x/g, ""), "", "kept head is the helper's output")
+    eq(shell.meter.failure, "", "a closed meter reports no failure")
+    shell.finish()
   }
 
   property int holdMs: Number(Quickshell.env("FOAMY_HOLD_MS") || 0)

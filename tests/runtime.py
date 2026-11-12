@@ -6,11 +6,12 @@ Hyprland, no PipeWire or Pulse reachable. Checks tests/qml/Runtime.qml plus
 
 The audio tools the plugin and the host shell run (pactl, avahi-browse,
 pw-record, pw-link, wpctl and the omarchy-audio-* scripts) are logging fakes
-that fail like an unreachable server; Omarchy's bin directories are dropped
-from PATH, PULSE_SERVER and PIPEWIRE_REMOTE point nowhere, and an AppImage's
-LD_LIBRARY_PATH ($APPDIR) is dropped. So the live PipeWire graph, its modules
-and the microphone stay out of reach even when the caller's environment names
-a server.
+that fail like an unreachable server. The harness isolates the rest: no
+Omarchy bin directory or $APPDIR on PATH or LD_LIBRARY_PATH, every other
+omarchy command a logging stub (the test fails if one ran), PULSE_SERVER and
+PIPEWIRE_REMOTE at dead sockets. So the live PipeWire graph, its modules and
+the microphone stay out of reach even when the caller's environment names a
+server.
 
 FOAMY_KIT (default ~/GitHub/Personal/foamy-kit) provides the harness.
 The host is Omarchy 4.5: FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else
@@ -20,7 +21,6 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import time
 
 PLUGIN = Path(__file__).resolve().parents[1]
 KIT = Path(os.environ.get("FOAMY_KIT", Path.home() / "GitHub/Personal/foamy-kit"))
@@ -48,29 +48,22 @@ FAKES = ("pactl", "avahi-browse", "pw-record", "pw-link", "wpctl", "omarchy-audi
          "omarchy-audio-input-set-default")
 
 
-def isolate(env, host):
-    """Drops Omarchy's bin directories and an AppImage's libraries; no audio server is named."""
-    bins = {os.path.realpath("/usr/share/omarchy/bin"), os.path.realpath(Path(host).parent / "bin")}
-    env["PATH"] = ":".join(p for p in env["PATH"].split(":") if p and os.path.realpath(p) not in bins)
-    appdir = os.environ.get("APPDIR", "").rstrip("/")
-    env["LD_LIBRARY_PATH"] = ":".join(p for p in env.get("LD_LIBRARY_PATH", "").split(":")
-                                      if p and not (appdir and (p == appdir or p.startswith(appdir + "/"))))
-    env.update(PULSE_SERVER=f"unix:{env['XDG_RUNTIME_DIR']}/no-pulse", PIPEWIRE_REMOTE="no-pipewire",
-               FOAMY_FAKE_ERROR=FAKE_ERROR)
-
-
 def ipc_status(run):
+    """The leader's `status` reply once the scene logged FOAMY READY, or None."""
+    if not run.wait_for_log("FOAMY READY", 60):
+        print("    no FOAMY READY before the IPC call")
+        return None
     by_id = Path(run.env["XDG_RUNTIME_DIR"]) / "quickshell/by-id"
-    for _ in range(100):
-        ids = [p.name for p in by_id.iterdir()] if by_id.is_dir() else []
-        if ids and "FOAMY READY" in (run.base / "qs.log").read_text(errors="replace"):
-            break
-        time.sleep(0.1)
-    else:
+    ids = [p.name for p in by_id.iterdir()] if by_id.is_dir() else []
+    if not ids:
+        print("    no quickshell instance to call")
         return None
     result = subprocess.run(["qs", "ipc", "-i", ids[0], "call", "foamy.audio", "status"], env=run.env,
                             capture_output=True, text=True, timeout=10)
-    return result.stdout.strip() if result.returncode == 0 else None
+    if result.returncode != 0:
+        print("    qs ipc failed: " + result.stderr.strip()[-300:])
+        return None
+    return result.stdout.strip()
 
 
 def run(host, lang):
@@ -79,20 +72,18 @@ def run(host, lang):
     # path past 107 bytes fails to bind ("Failed to start IPC server").
     r = harness.Run(host, shell, plugin=PLUGIN, language=lang, prefix=f"fa-rt-{lang}-",
                     fakebin={name: FAKE for name in FAKES})
-    r.env.update(FOAMY_LANG=lang, FOAMY_HOLD_MS="3000")
-    isolate(r.env, r.host)
-    log_path = r.base / "qs.log"
-    process = subprocess.Popen(["qs", "-p", str(r.root), "--no-color"], env=r.env, stdout=log_path.open("w"),
-                               stderr=subprocess.STDOUT, start_new_session=True)
+    # The harness drops Omarchy's bin dirs and $APPDIR, stubs every other
+    # omarchy command and points PULSE_SERVER/PIPEWIRE_REMOTE at dead sockets.
+    r.env.update(FOAMY_LANG=lang, FOAMY_HOLD_MS="3000", FOAMY_FAKE_ERROR=FAKE_ERROR)
+    r.start()
     try:
         status = ipc_status(r)
-        process.wait(timeout=60)
+        r.wait(60)
     finally:
-        if process.poll() is None:
-            process.kill()
-    log = log_path.read_text(errors="replace")
+        r.stop()
+    log = r.log
     result = next((line.split("FOAMY RESULT ", 1)[1] for line in log.splitlines() if "FOAMY RESULT" in line), "no result")
-    failures = [line for line in log.splitlines() if "FOAMY FAIL" in line or any(m in line for m in harness.FAILURE_MARKERS)]
+    failures = r.failures()
     try:
         leader = status is not None and json.loads(status).get("leader") is True
     except ValueError:
@@ -102,6 +93,9 @@ def run(host, lang):
     calls = calls_log.read_text().splitlines() if calls_log.exists() else []
     if "pactl list modules short" not in calls:
         failures.append(f"FOAMY FAIL the fake pactl never ran: {calls}")
+    # Every host command the plugin runs has a fake; nothing reached a stub.
+    if r.host_commands():
+        failures.append(f"FOAMY FAIL host commands ran without a fake: {r.host_commands()}")
     ok = "FOAMY DONE" in log and not failures and leader
     print(f"{'PASS' if ok else 'FAIL'} runtime {host} {lang}: {result}; ipc status from leader: {leader}")
     if not ok:
