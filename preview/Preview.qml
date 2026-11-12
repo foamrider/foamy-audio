@@ -10,7 +10,7 @@ Item {
   required property Item anchorItem
   property var previewStates: ["default", "wireless", "empty", "settings", "settings-firewall", "cursor-volume"]
   property string previewState: "default"
-  readonly property Item popup: popup
+  readonly property var popup: previewPopup
 
   function node(id, name, label, volume, muted) {
     return {
@@ -140,12 +140,12 @@ Item {
   Timer {
     id: placeCursor
     interval: 300
-    onTriggered: if (popup.bodyItem)
-      popup.bodyItem.hover("volume")
+    onTriggered: if (preview.popup.bodyItem)
+      preview.popup.bodyItem.hover("volume")
   }
 
   FoamyPopup {
-    id: popup
+    id: previewPopup
     anchorItem: preview.anchorItem
     bar: preview.bar
     open: true

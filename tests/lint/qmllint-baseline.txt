@@ -55,8 +55,4 @@ preview/Before.qml: block-scope-var-declaration: var declaration in block scope 
 preview/Before.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var child = kids[i]
 preview/Before.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var deeper = findPopup(child, depth + 1)
 preview/Preview.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; row && i < preview.allNodes.length; i++)
-preview/Preview.qml: id-shadows-member: Id for object FoamyPopup shadows property "popup". Rename one or the other. | readonly property Item popup: popup
-preview/Preview.qml: id-shadows-member: Note: Id defined here | id: popup
-preview/Preview.qml: incompatible-type: Cannot assign binding of type FoamyPopup to QQuickItem | readonly property Item popup: popup
-preview/Preview.qml: missing-property: Member "hover" not found on type "QQuickItem" | popup.bodyItem.hover("volume")
 preview/Preview.qml: unqualified: Unqualified access | audio: mock
