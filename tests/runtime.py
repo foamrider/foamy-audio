@@ -84,8 +84,9 @@ def ipc_status(run):
 
 def run(host, lang):
     shell = (PLUGIN / "tests/qml/Runtime.qml").read_text()
-    # A short prefix: qs's IPC socket lives under the run dir, and a unix socket
-    # path past 107 bytes fails to bind ("Failed to start IPC server").
+    # The prefix names the run's temp dir. qs's IPC socket is not under it: the
+    # harness keeps the runtime dir and bus sockets in its own short directory
+    # (Run.sockets), so a long TMPDIR can't push them past 107 bytes.
     r = harness.Run(
         host, shell, plugin=PLUGIN, language=lang, prefix=f"fa-rt-{lang}-", fakebin={name: FAKE for name in FAKES}
     )
