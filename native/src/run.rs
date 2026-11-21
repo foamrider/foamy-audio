@@ -162,6 +162,13 @@ pub mod tests {
 
     #[test]
     fn a_finished_tool_gives_its_status_and_output_in_the_c_locale() {
+        // The child inherits the caller's environment: under LC_ALL=C this
+        // test could not see a runner that forgets to set the C locale.
+        assert_ne!(
+            std::env::var("LC_ALL").as_deref(),
+            Ok("C"),
+            "fixture: run this test without LC_ALL=C"
+        );
         // A generous deadline: these tools must finish, also on a loaded machine.
         let mut runner = System {
             timeout: Duration::from_secs(30),
@@ -192,19 +199,32 @@ pub mod tests {
             timeout: Duration::from_secs(30),
             c_locale: false,
         };
-        // More than MAX_OUTPUT on one stream is never a shortened answer.
-        // On failure, show the length of the output, not the output.
-        let flood = runner
-            .run(&["/bin/sh", "-c", "yes"])
-            .map(|done| done.stdout.len());
-        assert!(
-            flood
-                .as_ref()
-                .is_err_and(|error| error.contains("printed more than")),
-            "{flood:?}"
-        );
         // A tool that cannot start: the message names it.
         let missing = runner.run(&["/nonexistent/tool"]).unwrap_err();
         assert!(missing.contains("/nonexistent/tool"), "{missing}");
+    }
+
+    /// Up to MAX_OUTPUT on one stream is a whole answer (pactl's JSON lists,
+    /// ufw's rules); one byte more is an error, never a shortened answer.
+    #[test]
+    fn output_up_to_the_bound_is_whole_and_one_byte_more_is_an_error() {
+        let mut runner = System {
+            timeout: Duration::from_secs(30),
+            c_locale: false,
+        };
+        // On failure, show the length of the output, not the output.
+        let mut printed = |bytes: usize| {
+            let script = format!("head -c {bytes} /dev/zero");
+            runner
+                .run(&["/bin/sh", "-c", &script])
+                .map(|done| done.stdout.len())
+        };
+        assert_eq!(printed(MAX_OUTPUT), Ok(MAX_OUTPUT));
+        let over = printed(MAX_OUTPUT + 1);
+        assert!(
+            over.as_ref()
+                .is_err_and(|error| error.contains("printed more than")),
+            "{over:?}"
+        );
     }
 }

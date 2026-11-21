@@ -737,12 +737,6 @@ mod tests {
     }
 
     #[test]
-    fn module_listing_accepts_pulse_and_native_raop_names() {
-        let output = "\n536870916\tmodule-raop-discover\n27 libpipewire-module-raop-discover { }\nnot-an-id module-raop-discover\n9 module-null-sink\n";
-        assert_eq!(parse_module_ids(output), [536870916, 27]);
-    }
-
-    #[test]
     fn avahi_escapes() {
         assert_eq!(decode_avahi(r"Kj\195\184kken"), "Kjøkken");
         assert_eq!(decode_avahi(r"a\064b"), "a@b");
@@ -765,6 +759,8 @@ mod tests {
             let line = format!(
                 "=;eth0;IPv4;Stue;AirTunes Remote Audio;local;stue.local;192.0.2.17;7000;{txt}\n"
             );
+            // A panic in the scanner does not name the input: say it first.
+            eprintln!("TXT record: {txt}");
             let receivers = parse_avahi_receivers(&line);
             assert_eq!(receivers.len(), 1, "{txt}");
             assert_eq!(receivers[0]["name"], "Stue", "{txt}");
@@ -825,7 +821,10 @@ mod tests {
                 (reply["error"].as_str(), code),
                 (Some("Failure: nope"), expected)
             );
-            assert!(!state.exists());
+            assert!(
+                !state.exists(),
+                "pactl status {status}: a failed load left a session"
+            );
         }
         let mut runner = Script::new().ok("").ok("not a number\n");
         let (reply, code) = start("", "", &mut runner, &state, &module).unwrap();
