@@ -34,12 +34,18 @@ other=aarch64
 [[ $(uname -m) == aarch64 ]] && other=x86_64
 helper="$PWD/bin/$other/foamy-audio-helper"
 ulimit -c 0
-# No arguments: the usage text and exit 2, when this machine can run it at all.
+# No arguments: the usage text and exit 2. Only 126 and 127 (the kernel or
+# bash cannot execute the file) mean this machine can't run it; any other
+# status is a helper that started and then misbehaved.
 "$helper" >/dev/null 2>&1
-if (($? == 2)); then
+probe=$?
+if ((probe == 2)); then
   FOAMY_HELPER="[\"$helper\"]" run python3 -I -m unittest discover -s tests -p 'test_*.py'
-else
+elif ((probe == 126 || probe == 127)); then
   skip "the $other helper: this machine can't run it (no qemu-user binfmt)"
+else
+  echo "FAIL the $other helper exited $probe without arguments (expected usage and exit 2)"
+  status=1
 fi
 
 if ((ci || fast)); then
