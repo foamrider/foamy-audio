@@ -485,6 +485,19 @@ class AirPlayBridgeTest(unittest.TestCase):
         self.assertTrue(payload["error"].startswith("AirPlay helper failed: "), payload)
         self.assertTrue(self.state.exists())
 
+    def test_status_keeps_the_session_when_pactl_cannot_run(self):
+        # pactl missing (or past its deadline) says nothing about the module:
+        # forgetting the session would leave the owned module loaded for good.
+        self.write_state({"moduleId": 12, "owned": True})
+        saved = self.state.read_text()
+        os.unlink(self.fakes.bin / "pactl")
+        result = self.run_bridge("status")
+        self.assertEqual(result.returncode, 1)
+        payload = reply(result)
+        self.assertFalse(payload["ok"])
+        self.assertTrue(payload["error"].startswith("AirPlay helper failed: "), payload)
+        self.assertEqual(self.state.read_text(), saved)
+
     # ---- start and discovery -----------------------------------------------
 
     def test_start_reuses_external_module_without_claiming_ownership(self):
