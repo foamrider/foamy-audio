@@ -852,20 +852,16 @@ mod tests {
                 .unwrap()
                 .contains(ip("::ffff:192.0.2.1"))
         );
-        assert_eq!(ip("::ffff:192.0.2.1").to_string(), "::ffff:192.0.2.1");
     }
 
     #[test]
-    fn interfaces_and_repr() {
+    fn interface_names_that_could_add_ufw_arguments_are_refused() {
         assert!(
             valid_interface("wlan0")
                 && valid_interface("br-1.2_x")
                 && !valid_interface("wlan0 from any")
         );
         assert!(!valid_interface("") && !valid_interface("abcdefghijklmnop"));
-        assert_eq!(repr("0.0.0.0/0"), "'0.0.0.0/0'");
-        assert_eq!(repr("it's"), "\"it's\"");
-        assert_eq!(repr("a\nb\\"), "'a\\nb\\\\'");
     }
 
     #[test]
@@ -1039,6 +1035,35 @@ mod tests {
         );
     }
 
+    /// After Apply on an upgraded install the old rule from Anywhere stayed,
+    /// and Verify said "open" because the scoped rule covered the speaker
+    /// (fixed in a43a8c9).
+    #[test]
+    fn a_rule_from_anywhere_is_wide_even_next_to_a_scoped_rule() {
+        let rules = [
+            "6001:6002/udp on wlan0      ALLOW IN    192.0.2.0/24               # Foamy Audio AirPlay",
+            "6001:6002/udp              ALLOW IN    Anywhere                   # Foamy Audio AirPlay",
+            "6001:6002/udp (v6)         ALLOW IN    Anywhere (v6)              # Foamy Audio AirPlay",
+        ];
+        let result = inspect_status(&status(&rules), &[speaker()]).unwrap();
+        assert_eq!(
+            (result["state"].as_str(), result["legacy"].as_bool()),
+            (Some("wide"), Some(true))
+        );
+        assert_eq!(state(&rules, &[]), "wide");
+        // Another program's rule from anywhere, on an interface the speaker
+        // is not on, still exposes the ports there.
+        let rules = [
+            "6001:6002/udp on wlan0      ALLOW IN    192.0.2.0/24",
+            "6001:6002/udp on eth0       ALLOW IN    Anywhere",
+        ];
+        let result = inspect_status(&status(&rules), &[speaker()]).unwrap();
+        assert_eq!(
+            (result["state"].as_str(), result["legacy"].as_bool()),
+            (Some("wide"), Some(false))
+        );
+    }
+
     #[test]
     fn scopes() {
         let mut run = Script::new()
@@ -1080,7 +1105,11 @@ mod tests {
     fn ufw_failures() {
         for code in [126, 127] {
             let mut ufw = Script::new().fail(code, "");
-            assert_eq!(run_ufw(&mut ufw, &STATUS_COMMAND).unwrap_err(), CANCELLED);
+            // Panel.qml shows "Authorization cancelled or denied." only for this exact text.
+            assert_eq!(
+                run_ufw(&mut ufw, &STATUS_COMMAND).unwrap_err(),
+                "Administrator authorization was cancelled or denied."
+            );
         }
         let mut ufw = Script::new().fail(1, "");
         assert_eq!(

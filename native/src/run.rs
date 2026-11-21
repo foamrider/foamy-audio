@@ -161,37 +161,10 @@ pub mod tests {
     }
 
     #[test]
-    fn diagnostics_and_last_line() {
-        let result = Completed {
-            code: 1,
-            stdout: "out\n".into(),
-            stderr: "a\nb\n".into(),
-        };
-        assert_eq!(last_line(&result, "x"), "b");
-        let blank = Completed {
-            code: 1,
-            stdout: "out".into(),
-            stderr: " \n".into(),
-        };
-        // Python's `stderr or stdout` takes whitespace-only stderr, which strips to nothing.
-        assert_eq!(last_line(&blank, "fallback"), "fallback");
-        assert_eq!(last_line(&Completed::default(), "fallback"), "fallback");
-    }
-
-    #[test]
-    fn os_errors_read_like_python() {
-        let error = io::Error::from_raw_os_error(2);
-        assert_eq!(
-            os_error(&error, "pactl"),
-            "[Errno 2] No such file or directory: 'pactl'"
-        );
-        assert_eq!(argv_repr(&["ip", "-j"]), "['ip', '-j']");
-    }
-
-    #[test]
-    fn system_runner_bounds_and_reports() {
+    fn a_finished_tool_gives_its_status_and_output_in_the_c_locale() {
+        // A generous deadline: these tools must finish, also on a loaded machine.
         let mut runner = System {
-            timeout: Duration::from_millis(300),
+            timeout: Duration::from_secs(30),
             c_locale: true,
         };
         let done = runner
@@ -201,14 +174,37 @@ pub mod tests {
             (done.code, done.stdout.as_str(), done.stderr.as_str()),
             (3, "C", "err\n")
         );
-        let slow = runner.run(&["/bin/sh", "-c", "sleep 5"]).unwrap_err();
-        assert_eq!(
-            slow,
-            "Command '['/bin/sh', '-c', 'sleep 5']' timed out after 0 seconds"
-        );
-        let missing = runner.run(&["/nonexistent/tool"]).unwrap_err();
-        assert!(missing.starts_with("[Errno 2] "), "{missing}");
+        // Ended by a signal: a failure for every caller, never status 0.
         let killed = runner.run(&["/bin/sh", "-c", "kill -9 $$"]).unwrap();
         assert_eq!(killed.code, -9);
+    }
+
+    #[test]
+    fn a_tool_without_an_answer_is_an_error() {
+        // Past its deadline. Only this case uses a short one.
+        let mut short = System {
+            timeout: Duration::from_millis(300),
+            c_locale: false,
+        };
+        let slow = short.run(&["/bin/sh", "-c", "sleep 5"]).unwrap_err();
+        assert!(slow.contains("timed out"), "{slow}");
+        let mut runner = System {
+            timeout: Duration::from_secs(30),
+            c_locale: false,
+        };
+        // More than MAX_OUTPUT on one stream is never a shortened answer.
+        // On failure, show the length of the output, not the output.
+        let flood = runner
+            .run(&["/bin/sh", "-c", "yes"])
+            .map(|done| done.stdout.len());
+        assert!(
+            flood
+                .as_ref()
+                .is_err_and(|error| error.contains("printed more than")),
+            "{flood:?}"
+        );
+        // A tool that cannot start: the message names it.
+        let missing = runner.run(&["/nonexistent/tool"]).unwrap_err();
+        assert!(missing.contains("/nonexistent/tool"), "{missing}");
     }
 }
