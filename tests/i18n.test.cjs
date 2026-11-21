@@ -18,19 +18,38 @@ for (const [key, value] of Object.entries(en)) {
 }
 assert.deepEqual(Object.keys(no).sort(), Object.keys(en).sort());
 
+// The value of a quoted QML literal's body: its escapes as JSON reads them,
+// with \' and a bare " (fine inside '...') made JSON-safe first.
+function literalValue(file, at, body) {
+  let json = '';
+  for (let k = 0; k < body.length; k++) {
+    if (body[k] === '\\' && k + 1 < body.length) {
+      json += body[k + 1] === "'" ? "'" : body[k] + body[k + 1];
+      k++;
+    } else json += body[k] === '"' ? '\\"' : body[k];
+  }
+  try {
+    return JSON.parse('"' + json + '"');
+  } catch (error) {
+    assert.fail(`${file}: cannot read the literal at offset ${at} (${error.message})`);
+  }
+}
+
 // The string literals in the arguments of one call that starts at `start`
 // (just after its open parenthesis): ternaries and `||` fallbacks included.
-function callLiterals(text, start) {
+// A template literal could hide text and parentheses from this scan.
+function callLiterals(file, text, start) {
   const found = [];
   let depth = 1;
   for (let i = start; i < text.length && depth > 0; i++) {
     const c = text[i];
     if (c === '(') depth++;
     else if (c === ')') depth--;
+    else if (c === '`') assert.fail(`${file}: use a plain string literal in FoamyI18n calls (offset ${i})`);
     else if (c === '"' || c === "'") {
       let j = i + 1;
       while (j < text.length && text[j] !== c) j += text[j] === '\\' ? 2 : 1;
-      found.push(JSON.parse('"' + text.slice(i + 1, j).replace(/\\'/g, "'") + '"'));
+      found.push(literalValue(file, i, text.slice(i + 1, j)));
       i = j;
     }
   }
@@ -43,7 +62,7 @@ for (const file of fs.readdirSync(root).filter(f => f.endsWith('.qml'))) {
   const text = fs.readFileSync(path.join(root, file), 'utf8');
   for (const match of text.matchAll(/FoamyI18n\.tn?\(/g)) {
     calls++;
-    for (const literal of callLiterals(text, match.index + match[0].length))
+    for (const literal of callLiterals(file, text, match.index + match[0].length))
       assert.ok(Object.hasOwn(en, literal), `${file}: missing catalog entry ${literal}`);
   }
 }
