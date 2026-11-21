@@ -232,19 +232,36 @@ def run_leftover():
     return ok
 
 
+# The fake helper's `hold <gate>` waits until tests/qml/Helper.qml writes the
+# gate's name as a line of $FOAMY_OUT/release (release() there), so the scene
+# sees the call still running however slow the machine is. A scene that never
+# releases gets an error reply after 30 s instead of a fake that never ends.
+HOLD = """hold() {
+  i=0
+  until grep -qx "$1" "$FOAMY_OUT/release" 2>/dev/null; do
+    i=$((i + 1))
+    if [ "$i" -gt 600 ]; then return 1; fi
+    sleep 0.05
+  done
+}
+held() { echo "{\\"ok\\":false,\\"error\\":\\"fake helper: $1 was never released\\"}"; exit 1; }"""
+
+
 # The helper as a scripted fake for tests/qml/Helper.qml: each call is logged
 # with its arguments joined by "|" (so empty ones show). The first start,
-# the kitchen choice and verify are slow (1-1.5 s), so the scene can act
-# while they run; the answers cover refusals and replies that are not JSON.
+# the kitchen choice and verify wait for the scene (hold), so the scene can
+# act while they run; the answers cover refusals and replies that are not
+# JSON.
 # The cancel text is the one the helper's black-box tests expect from ufw.rs
 # (CANCELLED in tests/blackbox.py): if the helper's text changes, this scene
 # fails until Panel.qml matches the new text.
 HELPER = """#!/bin/sh
 (IFS='|'; printf '%s\\n' "$*") >> "$FOAMY_OUT/helper.log"
+HOLD
 case "$1 $2" in
   "airplay status") echo '{"ok":true,"active":false,"error":""}' ;;
   "airplay start")
-    if [ ! -e "$FOAMY_OUT/started" ]; then : > "$FOAMY_OUT/started"; sleep 1.5; fi
+    if [ ! -e "$FOAMY_OUT/started" ]; then : > "$FOAMY_OUT/started"; hold start || held start; fi
     echo '{"ok":true,"error":"","moduleId":7,"owned":true,"peers":[{"name":"Kitchen","address":"192.0.2.39"},{"name":"Hall","address":"192.0.2.40"}]}' ;;
   "airplay stop") echo '{"ok":true,"error":"","restoreName":""}' ;;
   "airplay select")
@@ -252,10 +269,10 @@ case "$1 $2" in
       raop_sink.gone) echo '{"ok":false,"error":"An AirPlay speaker is no longer available. Reopen the panel."}'; exit 1 ;;
       raop_sink.garbage) echo oops ;;
       --local-name) echo "{\\"ok\\":true,\\"error\\":\\"\\",\\"selectedNames\\":[],\\"target\\":\\"$4\\"}" ;;
-      raop_sink.kitchen) sleep 1; echo '{"ok":true,"error":"","selectedNames":["raop_sink.kitchen"],"target":"raop_sink.kitchen"}' ;;
+      raop_sink.kitchen) hold select || held select; echo '{"ok":true,"error":"","selectedNames":["raop_sink.kitchen"],"target":"raop_sink.kitchen"}' ;;
       *) echo "{\\"ok\\":true,\\"error\\":\\"\\",\\"selectedNames\\":[\\"$3\\"],\\"target\\":\\"$3\\"}" ;;
     esac ;;
-  "ufw verify") sleep 1; echo '{"state":"wide","message":"m","details":"d","legacy":true}' ;;
+  "ufw verify") hold verify || held verify; echo '{"state":"wide","message":"m","details":"d","legacy":true}' ;;
   "ufw remove")
     if [ "$3" = --legacy ]; then echo '{"state":"removed","message":"m","details":"d"}'; else echo 'not json'; fi ;;
   "ufw open")
@@ -264,7 +281,7 @@ case "$1 $2" in
   *) echo '{"ok":false,"error":"fake helper: unexpected call"}'; exit 1 ;;
 esac
 """
-HELPER = HELPER.replace(
+HELPER = HELPER.replace("HOLD", HOLD, 1).replace(
     "UFW_OPEN_REPLY",
     shlex.quote(json.dumps({"state": "error", "message": "Could not apply UFW rules.", "details": CANCELLED})),
 )

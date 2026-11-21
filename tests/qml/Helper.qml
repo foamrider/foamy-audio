@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "harness"
@@ -21,6 +22,9 @@ ShellRoot {
   readonly property var view: panel ? panel.popup.bodyItem : null
   property int checks: 0
   property int failures: 0
+  property bool finished: false
+  // The gates this scene released so far (see release()).
+  property string released: ""
 
   function check(ok, label) {
     checks++
@@ -79,20 +83,52 @@ ShellRoot {
   FoamyWait {
     id: wait
   }
+  // The fake helper holds the first start, the kitchen choice and verify
+  // until the scene writes the gate's name here (hold in tests/runtime.py).
+  FileView {
+    id: gates
+    path: Quickshell.env("FOAMY_OUT") + "/release"
+    preload: false
+    onSaveFailed: function (error) {
+      shell.check(false, "writing the release file failed: " + FileViewError.toString(error))
+    }
+  }
+  // Lets a held helper call answer: only after the scene has acted on the
+  // state that call shows, so the order never depends on the machine's speed.
+  function release(gate) {
+    released += gate + "\n"
+    gates.setText(released)
+  }
+  // A wait that timed out has logged its failure: the scene ends there, so
+  // no later step acts on a state it never saw.
+  function until(condition, timeoutMs, then, label) {
+    wait.waitFor(condition, timeoutMs, function (ok) {
+      if (ok)
+        then()
+      else
+        finish()
+    }, label)
+  }
 
   Component.onCompleted: Qt.callLater(mode === "nohelper" ? noHelper : closeDuringStart)
 
-  // a. A popup closed while its start still runs (the fake's first start
-  // takes 1.5 s) must not leave discovery loaded.
+  // a. A popup closed while its start still runs (the fake holds the first
+  // start) must not leave discovery loaded. The service lets go of a closed
+  // popup after a short delay: the start ends only once it has.
   function closeDuringStart() {
     panel.open()
-    wait.waitFor(function () {
+    until(function () {
       return shell.service.airplayScanState === "scanning"
     }, 10000, function () {
       panel.close()
-      wait.waitFor(function () {
-        return !shell.service.wanted && !shell.service.airplayBusy && shell.service.airplayScanState === "idle"
-      }, 15000, selectSpeaker, "a start still running at the close ends in a stop")
+      until(function () {
+        return !shell.service.wanted && shell.service.airplayBusy
+      }, 10000, function () {
+        release("start")
+        until(function () {
+          return !shell.service.wanted && !shell.service.airplayBusy && shell.service.airplayScanState === "idle"
+        }, 15000, selectSpeaker, "a start still running at the close ends in a stop")
+      }, "the service lets go of the closed popup while its start runs")
     }, "opening starts discovery")
   }
 
@@ -100,20 +136,21 @@ ShellRoot {
   function selectSpeaker() {
     eq(service.airplayDiscoveryActive, false, "discovery not left active after a close during its start")
     panel.open()
-    wait.waitFor(function () {
+    until(function () {
       return panel.airplayPeerCount === 2 && shell.service.airplayDiscoveryActive && view !== null
     }, 10000, function () {
       panel.activate("wireless", {
         name: "raop_sink.kitchen"
       })
-      // The fake takes 1 s for this choice: a second one meanwhile is ignored.
-      wait.waitFor(function () {
+      // The fake holds this choice: a second one meanwhile is ignored.
+      until(function () {
         return shell.service.airplaySelecting
       }, 5000, function () {
         panel.activate("wireless", {
           name: "raop_sink.hall"
         })
-        wait.waitFor(function () {
+        release("select")
+        until(function () {
           return !shell.service.airplaySelecting && shell.service.airplayScanState === "results"
         }, 10000, verifyFirewall, "the speaker choice ends")
       }, "the speaker choice runs")
@@ -124,7 +161,7 @@ ShellRoot {
   // JSON, a cancelled authorization.
   function firewall(action, then) {
     view.firewall(action)
-    wait.waitFor(function () {
+    until(function () {
       return !panel.firewallBusy && panel.firewallState !== ""
     }, 10000, then, "the firewall " + action + " ends")
   }
@@ -134,11 +171,12 @@ ShellRoot {
     var apply = findNamed(view, "audioFirewallApply")
     eq(apply ? apply.enabled : null, true, "Apply is enabled once speakers are found")
     firewall("verify", wideRule)
-    // The fake takes 1 s to verify: Apply meanwhile is ignored.
-    wait.waitFor(function () {
+    // The fake holds verify: Apply meanwhile is ignored.
+    until(function () {
       return panel.firewallBusy
     }, 5000, function () {
       view.firewall("open")
+      release("verify")
     }, "verify runs")
   }
   function wideRule() {
@@ -173,7 +211,7 @@ ShellRoot {
   // d. Replies to a choice: a refusal, a local output, invalid data.
   function choose(kind, node, state, then) {
     panel.activate(kind, node)
-    wait.waitFor(function () {
+    until(function () {
       return !shell.service.airplaySelecting && shell.service.airplayScanState === state
     }, 10000, then, "the " + kind + " choice " + node.name + " ends in " + state)
   }
@@ -195,7 +233,7 @@ ShellRoot {
     eq(service.airplayError, "AirPlay helper returned invalid data", "a reply that is not JSON")
     translated(service.airplayError, "the invalid-data text")
     panel.close()
-    wait.waitFor(function () {
+    until(function () {
       return !shell.service.wanted && !shell.service.airplayBusy && !shell.service.airplayDiscoveryActive && shell.service.airplayScanState === "idle"
     }, 10000, removePanel, "closing stops discovery")
   }
@@ -205,11 +243,11 @@ ShellRoot {
   // tests/runtime.py waits for that stop in the helper log.
   function removePanel() {
     panel.open()
-    wait.waitFor(function () {
+    until(function () {
       return shell.service.airplayDiscoveryActive && panel.airplayPeerCount === 2 && view !== null
     }, 10000, function () {
       panelLoader.active = false
-      wait.waitFor(function () {
+      until(function () {
         return !shell.service.airplayDiscoveryActive && shell.service.airplayScanState === "idle"
       }, 10000, finish, "removing the last panel ends discovery")
     }, "reopening starts discovery again")
@@ -218,11 +256,11 @@ ShellRoot {
   // No bin/ for this CPU: AirPlay and the firewall say so, in Norwegian.
   readonly property string unavailableText: "This plugin's helper isn't available for this CPU."
   function noHelper() {
-    wait.waitFor(function () {
+    until(function () {
       return shell.service.airplayHelperUnavailable
     }, 10000, function () {
       panel.open()
-      wait.waitFor(function () {
+      until(function () {
         return shell.service.airplayScanState === "error" && view !== null
       }, 10000, noHelperOpen, "AirPlay reports the missing helper")
     }, "the startup status finds no helper")
@@ -239,6 +277,9 @@ ShellRoot {
   }
 
   function finish() {
+    if (finished)
+      return
+    finished = true
     console.log("FOAMY RESULT helper " + mode + " " + checks + " checks, " + failures + " failures (a wait that timed out is reported on its own line)")
     console.log("FOAMY DONE")
     Qt.quit()
