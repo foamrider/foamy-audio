@@ -263,7 +263,8 @@ START = "airplay|start|--restore-id||--restore-name|"
 STOP = "airplay|stop|--skip-restore"
 PEERS = "--peer|192.0.2.39|--peer|192.0.2.40"
 # Without the startup `airplay|status`. A second select or firewall action
-# sent while one runs must not show up.
+# sent while one runs must not show up. The last stop is the one the service
+# sends when the scene removes its only panel.
 HELPER_CALLS = [
     START,
     STOP,
@@ -276,6 +277,8 @@ HELPER_CALLS = [
     "airplay|select|raop_sink.gone",
     "airplay|select|--local-name|alsa_output.usb",
     "airplay|select|raop_sink.garbage",
+    STOP,
+    START,
     STOP,
 ]
 
@@ -299,6 +302,8 @@ def run_helper(mode):
     failures = r.failures()
     log = r.out / "helper.log"
     expected = HELPER_CALLS if mode == "helper" else []
+    # The stop after the panel is gone runs detached: it can land after qs quit.
+    harness.wait_for(lambda: [call for call in lines(log) if call != "airplay|status"] == expected, 5)
     calls = lines(log)
     status = [call for call in calls if call == "airplay|status"]
     rest = [call for call in calls if call != "airplay|status"]

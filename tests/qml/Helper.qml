@@ -16,7 +16,9 @@ ShellRoot {
   id: shell
   readonly property string mode: Quickshell.env("FOAMY_MODE") || "helper"
   readonly property var service: Audio.AudioService
-  readonly property var view: panel.popup.bodyItem
+  // The scene's only panel, in a Loader so that the last step can remove it.
+  readonly property var panel: panelLoader.item
+  readonly property var view: panel ? panel.popup.bodyItem : null
   property int checks: 0
   property int failures: 0
 
@@ -55,16 +57,18 @@ ShellRoot {
     ScreenSim {
       id: sim
     }
-    Audio.Panel {
-      id: panel
+    Loader {
+      id: panelLoader
       x: 1200
       y: 4
-      bar: mockBar
-      moduleName: "foamy.audio"
-      settings: ({
-          id: "foamy.audio",
-          showPercentage: true
-        })
+      sourceComponent: Audio.Panel {
+        bar: mockBar
+        moduleName: "foamy.audio"
+        settings: ({
+            id: "foamy.audio",
+            showPercentage: true
+          })
+      }
     }
   }
 
@@ -193,7 +197,22 @@ ShellRoot {
     panel.close()
     wait.waitFor(function () {
       return !shell.service.wanted && !shell.service.airplayBusy && !shell.service.airplayDiscoveryActive && shell.service.airplayScanState === "idle"
-    }, 10000, finish, "closing stops discovery")
+    }, 10000, removePanel, "closing stops discovery")
+  }
+
+  // e. The last panel goes away (plugin disabled or removed) while its popup
+  // is open and discovery runs: the service stops discovery itself.
+  // tests/runtime.py waits for that stop in the helper log.
+  function removePanel() {
+    panel.open()
+    wait.waitFor(function () {
+      return shell.service.airplayDiscoveryActive && panel.airplayPeerCount === 2 && view !== null
+    }, 10000, function () {
+      panelLoader.active = false
+      wait.waitFor(function () {
+        return !shell.service.airplayDiscoveryActive && shell.service.airplayScanState === "idle"
+      }, 10000, finish, "removing the last panel ends discovery")
+    }, "reopening starts discovery again")
   }
 
   // No bin/ for this CPU: AirPlay and the firewall say so, in Norwegian.
