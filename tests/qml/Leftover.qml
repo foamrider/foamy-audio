@@ -74,7 +74,7 @@ ShellRoot {
       ready: true,
       properties: {}
     }), false, "nothing left to stop")
-    console.log("FOAMY RESULT leftover " + checks + " checks, " + failures + " failures")
+    console.log("FOAMY RESULT leftover " + checks + " checks, " + failures + " failures (a wait that timed out is reported on its own line)")
     console.log("FOAMY DONE")
     Qt.quit()
   }

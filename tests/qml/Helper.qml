@@ -239,7 +239,7 @@ ShellRoot {
   }
 
   function finish() {
-    console.log("FOAMY RESULT helper " + mode + " " + checks + " checks, " + failures + " failures")
+    console.log("FOAMY RESULT helper " + mode + " " + checks + " checks, " + failures + " failures (a wait that timed out is reported on its own line)")
     console.log("FOAMY DONE")
     Qt.quit()
   }

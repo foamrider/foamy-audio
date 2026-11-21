@@ -122,8 +122,10 @@ ShellRoot {
     }), false, "no platform hints here")
     // A second resolve while the startup run of omarchy-audio-output-sink is
     // still going (the fake takes 2 s): its answer is stale and must lose to
-    // a rerun (checked at the end).
+    // a rerun (checked at the end). If the startup run already ended, the
+    // end check would pass without the rerun: fail here instead.
     Audio.AudioService.resolveVolumeSink()
+    check(Audio.AudioService.volumeSinkStale, "fixture: the second resolve lands while the startup run is still going")
     var first = panels.itemAt(0)
     // No PipeWire offscreen: the bar shows the no-output glyph, never an empty button.
     eq(first.barGlyph(), "\ueee8", "bar glyph without an output")
@@ -374,7 +376,7 @@ ShellRoot {
 
   // tests/runtime.py calls the IPC handler after FOAMY READY, then stops qs.
   function finish() {
-    console.log("FOAMY RESULT " + host + "/" + lang + " " + checks + " checks, " + failures + " failures")
+    console.log("FOAMY RESULT " + host + "/" + lang + " " + checks + " checks, " + failures + " failures (a wait that timed out is reported on its own line)")
     console.log("FOAMY DONE")
     console.log("FOAMY READY")
   }
