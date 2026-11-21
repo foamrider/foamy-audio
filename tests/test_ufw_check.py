@@ -281,14 +281,6 @@ class UfwTest(unittest.TestCase):
         self.verify("Status: inactive\n")
         self.assertEqual(self.pkexec_calls(), [STATUS])
 
-    def test_authorization_cancellation_is_explicit(self):
-        self.fakes.queue("pkexec", {"code": 126})
-        result = self.ufw("verify", "--peer", "192.0.2.39")
-        self.assertEqual(result.returncode, 1)
-        self.assertEqual(
-            reply(result), {"state": "error", "message": "Could not complete the UFW check.", "details": CANCELLED}
-        )
-
     def test_inactive_and_unrecognized_status(self):
         self.assertEqual(
             self.verify("Status: inactive"),

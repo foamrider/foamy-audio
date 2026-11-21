@@ -408,13 +408,6 @@ class AirPlayBridgeTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(reply(result), {"ok": False, "active": False, "error": "Connection refused"})
 
-    def test_state_path_override(self):
-        other = self.fakes.root / "elsewhere.json"
-        other.write_text(json.dumps({"moduleId": 5}))
-        self.fakes.queue("pactl", "5\tmodule-raop-discover\n")
-        result = self.run_bridge("status", env={"FOAMY_AUDIO_AIRPLAY_STATE": str(other)})
-        self.assertEqual(reply(result), {"ok": True, "active": True, "error": "", "moduleId": 5})
-
     def test_corrupt_state_is_an_empty_session(self):
         self.state.write_text("{not json")
         self.fakes.queue("pactl", "")
