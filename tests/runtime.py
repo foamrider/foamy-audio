@@ -2,7 +2,8 @@
 """Load Foamy Audio offscreen on Omarchy 4.5
 with the foamy-kit harness: isolated HOME/XDG/runtime dirs, no Wayland or
 Hyprland, no PipeWire or Pulse reachable. Checks tests/qml/Runtime.qml plus
-`qs ipc call foamy.audio status` answered by the leader.
+the leader's IPC handler (`settings`, `close`, `status` through `qs ipc call`)
+once the scene logged FOAMY READY.
 
 The audio tools the plugin and the host shell run (pactl, avahi-browse,
 pw-record, pw-link, wpctl and the omarchy-audio-* scripts) are logging fakes
@@ -40,11 +41,28 @@ import hostenv  # noqa: E402
 # Fails like pactl and friends without a server; the AirPlay helper reports
 # the last stderr line, which Runtime.qml checks (FAKE_ERROR).
 FAKE_ERROR = "fake audio tool: no server in tests"
+# Each fake also notes its parent process (parents.log): the host scripts
+# behind pactl must run under `timeout`, so a wedged pipewire-pulse cannot
+# hold them forever.
+NOTE_PARENT = (
+    'read -r parent < "/proc/$PPID/comm"; printf \'%s %s\\n\' "${0##*/}" "$parent" >> "$FOAMY_OUT/parents.log"'
+)
 FAKE = f"""#!/bin/sh
 printf '%s\\n' "${{0##*/}} $*" >> "$FOAMY_OUT/calls.log"
+{NOTE_PARENT}
 echo "{FAKE_ERROR}" >&2
 exit 1
 """
+# Answers alsa_output.fake.<n> for its n-th run, after 2 s: Runtime.qml asks
+# again while the first run is still going, so the first answer is stale.
+OUTPUT_SINK = f"""#!/bin/sh
+printf '%s\\n' "${{0##*/}} $*" >> "$FOAMY_OUT/calls.log"
+{NOTE_PARENT}
+n=$(grep -c '^omarchy-audio-output-sink' "$FOAMY_OUT/calls.log")
+sleep 2
+echo "alsa_output.fake.$n"
+"""
+DEADLINED = ("omarchy-audio-output-sink", "omarchy-audio-sink-availability")
 FAKES = (
     "pactl",
     "avahi-browse",
@@ -59,27 +77,55 @@ FAKES = (
 )
 
 
-def ipc_status(run):
-    """The leader's `status` reply once the scene logged FOAMY READY, or None."""
-    if not run.wait_for_log("FOAMY READY", 60):
-        print("    no FOAMY READY before the IPC call")
-        return None
+def ipc(run, call):
+    """`qs ipc call foamy.audio <call>` on the run's one instance; its stdout, or None."""
     by_id = Path(run.env["XDG_RUNTIME_DIR"]) / "quickshell/by-id"
     ids = [p.name for p in by_id.iterdir()] if by_id.is_dir() else []
     if not ids:
         print("    no quickshell instance to call")
         return None
     result = subprocess.run(
-        ["qs", "ipc", "-i", ids[0], "call", "foamy.audio", "status"],
+        ["qs", "ipc", "-i", ids[0], "call", "foamy.audio", call],
         env=run.env,
         capture_output=True,
         text=True,
         timeout=10,
     )
     if result.returncode != 0:
-        print("    qs ipc failed: " + result.stderr.strip()[-300:])
+        print(f"    qs ipc {call} failed: " + result.stderr.strip()[-300:])
         return None
     return result.stdout.strip()
+
+
+def ipc_status_until(run, **wanted):
+    """The leader's `status` once it shows the wanted values (at most 10 s), or the last one seen."""
+    seen = {}
+
+    def matches():
+        reply = ipc(run, "status")
+        try:
+            seen["status"] = json.loads(reply) if reply else None
+        except ValueError:
+            seen["status"] = None
+        status = seen["status"]
+        return status is not None and all(status.get(key) == value for key, value in wanted.items())
+
+    harness.wait_for(matches, 10, interval=0.2)
+    return seen.get("status")
+
+
+def ipc_flow(r, failures):
+    """Settings opens the popup from closed on the Settings page; close resets it."""
+    opened = ipc(r, "settings") is not None and ipc_status_until(r, open=True, settings=True, leader=True)
+    if not (opened and opened.get("open") and opened.get("settings") and opened.get("leader")):
+        failures.append(f"FOAMY FAIL ipc settings: status from the leader {opened}")
+    closed = ipc(r, "close") is not None and ipc_status_until(r, open=False, settings=False)
+    if not (closed and closed.get("open") is False and closed.get("settings") is False):
+        failures.append(f"FOAMY FAIL ipc close: status {closed}")
+
+
+def lines(path):
+    return path.read_text().splitlines() if path.exists() else []
 
 
 def run(host, lang):
@@ -87,37 +133,49 @@ def run(host, lang):
     # The prefix names the run's temp dir. qs's IPC socket is not under it: the
     # harness keeps the runtime dir and bus sockets in its own short directory
     # (Run.sockets), so a long TMPDIR can't push them past 107 bytes.
-    r = harness.Run(
-        host, shell, plugin=PLUGIN, language=lang, prefix=f"fa-rt-{lang}-", fakebin={name: FAKE for name in FAKES}
-    )
+    fakes = {name: FAKE for name in FAKES} | {"omarchy-audio-output-sink": OUTPUT_SINK}
+    r = harness.Run(host, shell, plugin=PLUGIN, language=lang, prefix=f"fa-rt-{lang}-", fakebin=fakes)
     # The harness drops Omarchy's bin dirs and $APPDIR, stubs every other
     # omarchy command and points PULSE_SERVER/PIPEWIRE_REMOTE at dead sockets.
-    r.env.update(FOAMY_LANG=lang, FOAMY_HOLD_MS="3000", FOAMY_FAKE_ERROR=FAKE_ERROR)
+    r.env.update(FOAMY_LANG=lang, FOAMY_FAKE_ERROR=FAKE_ERROR)
+    failures = []
     r.start()
     try:
-        status = ipc_status(r)
-        r.wait(60)
+        ready = r.wait_for_log("FOAMY READY", 60)
+        # The runs the scene saw: it logs the volume sink just before READY,
+        # and the IPC calls below may start more.
+        sink_runs = sum(line.startswith("omarchy-audio-output-sink") for line in lines(r.out / "calls.log"))
+        if ready:
+            ipc_flow(r, failures)
+        else:
+            failures.append("FOAMY FAIL no FOAMY READY before the IPC calls")
     finally:
         r.stop()
     log = r.log
     result = next(
         (line.split("FOAMY RESULT ", 1)[1] for line in log.splitlines() if "FOAMY RESULT" in line), "no result"
     )
-    failures = r.failures()
-    try:
-        leader = status is not None and json.loads(status).get("leader") is True
-    except ValueError:
-        leader = False
+    failures += r.failures()
+    calls = lines(r.out / "calls.log")
     # The AirPlay helper ran pactl, and it was the fake.
-    calls_log = r.out / "calls.log"
-    calls = calls_log.read_text().splitlines() if calls_log.exists() else []
     if "pactl list modules short" not in calls:
         failures.append(f"FOAMY FAIL the fake pactl never ran: {calls}")
+    # A resolve asked for during a run reruns the script; the last answer wins.
+    sink = next(
+        (line.split("FOAMY VOLUME SINK ", 1)[1] for line in log.splitlines() if "FOAMY VOLUME SINK" in line), ""
+    )
+    if sink_runs < 2 or sink != f"alsa_output.fake.{sink_runs}":
+        failures.append(f"FOAMY FAIL volume sink {sink!r} after {sink_runs} runs of omarchy-audio-output-sink")
+    parents = [line.split(" ", 1) for line in lines(r.out / "parents.log")]
+    for name in DEADLINED:
+        seen = [parent for tool, parent in parents if tool == name]
+        if not seen or any(parent != "timeout" for parent in seen):
+            failures.append(f"FOAMY FAIL {name} must run under timeout: parents {seen}")
     # Every host command the plugin runs has a fake; nothing reached a stub.
     if r.host_commands():
         failures.append(f"FOAMY FAIL host commands ran without a fake: {r.host_commands()}")
-    ok = "FOAMY DONE" in log and not failures and leader
-    print(f"{'PASS' if ok else 'FAIL'} runtime {host} {lang}: {result}; ipc status from leader: {leader}")
+    ok = "FOAMY DONE" in log and not failures
+    print(f"{'PASS' if ok else 'FAIL'} runtime {host} {lang}: {result}; ipc from the leader")
     if not ok:
         print("\n".join("    " + line for line in (failures or log.splitlines()[-40:])))
     else:
