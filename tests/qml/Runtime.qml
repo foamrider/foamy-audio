@@ -126,7 +126,7 @@ ShellRoot {
     Audio.AudioService.resolveVolumeSink()
     var first = panels.itemAt(0)
     // No PipeWire offscreen: the bar shows the no-output glyph, never an empty button.
-    eq(first.barGlyph(), "", "bar glyph without an output")
+    eq(first.barGlyph(), "\ueee8", "bar glyph without an output")
     eq(first.popup.bodyItem, null, "popup body is lazy")
     // An app's icon name is text from the app: never a remote image.
     eq(first.appIconSource("https://example.invalid/icon.png"), "", "a stream's icon name never becomes a remote image")
