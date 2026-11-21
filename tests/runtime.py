@@ -21,6 +21,7 @@ the installed /usr/share/omarchy/shell."""
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -227,7 +228,97 @@ def run_leftover():
     return ok
 
 
+# The helper as a scripted fake for tests/qml/Helper.qml: each call is logged
+# with its arguments joined by "|" (so empty ones show). The first start,
+# the kitchen choice and verify are slow (1-1.5 s), so the scene can act
+# while they run; the answers cover refusals and replies that are not JSON.
+# The cancel text is the one ufw.rs sends and Panel.qml matches (CANCELLED in
+# tests/test_ufw_check.py).
+HELPER = """#!/bin/sh
+(IFS='|'; printf '%s\\n' "$*") >> "$FOAMY_OUT/helper.log"
+case "$1 $2" in
+  "airplay status") echo '{"ok":true,"active":false,"error":""}' ;;
+  "airplay start")
+    if [ ! -e "$FOAMY_OUT/started" ]; then : > "$FOAMY_OUT/started"; sleep 1.5; fi
+    echo '{"ok":true,"error":"","moduleId":7,"owned":true,"peers":[{"name":"Kitchen","address":"192.0.2.39"},{"name":"Hall","address":"192.0.2.40"}]}' ;;
+  "airplay stop") echo '{"ok":true,"error":"","restoreName":""}' ;;
+  "airplay select")
+    case "$3" in
+      raop_sink.gone) echo '{"ok":false,"error":"An AirPlay speaker is no longer available. Reopen the panel."}'; exit 1 ;;
+      raop_sink.garbage) echo oops ;;
+      --local-name) echo "{\\"ok\\":true,\\"error\\":\\"\\",\\"selectedNames\\":[],\\"target\\":\\"$4\\"}" ;;
+      raop_sink.kitchen) sleep 1; echo '{"ok":true,"error":"","selectedNames":["raop_sink.kitchen"],"target":"raop_sink.kitchen"}' ;;
+      *) echo "{\\"ok\\":true,\\"error\\":\\"\\",\\"selectedNames\\":[\\"$3\\"],\\"target\\":\\"$3\\"}" ;;
+    esac ;;
+  "ufw verify") sleep 1; echo '{"state":"wide","message":"m","details":"d","legacy":true}' ;;
+  "ufw remove")
+    if [ "$3" = --legacy ]; then echo '{"state":"removed","message":"m","details":"d"}'; else echo 'not json'; fi ;;
+  "ufw open")
+    echo '{"state":"error","message":"Could not apply UFW rules.","details":"Administrator authorization was cancelled or denied."}'
+    exit 1 ;;
+  *) echo '{"ok":false,"error":"fake helper: unexpected call"}'; exit 1 ;;
+esac
+"""
+START = "airplay|start|--restore-id||--restore-name|"
+STOP = "airplay|stop|--skip-restore"
+PEERS = "--peer|192.0.2.39|--peer|192.0.2.40"
+# Without the startup `airplay|status`. A second select or firewall action
+# sent while one runs must not show up.
+HELPER_CALLS = [
+    START,
+    STOP,
+    START,
+    "airplay|select|raop_sink.kitchen",
+    "ufw|verify|" + PEERS,
+    "ufw|remove|--legacy",
+    "ufw|remove",
+    "ufw|open|" + PEERS,
+    "airplay|select|raop_sink.gone",
+    "airplay|select|--local-name|alsa_output.usb",
+    "airplay|select|raop_sink.garbage",
+    STOP,
+]
+
+
+def run_helper(mode):
+    """tests/qml/Helper.qml: the helper protocol, or (nohelper) no helper for this CPU."""
+    r = harness.Run(
+        "4.5",
+        (PLUGIN / "tests/qml/Helper.qml").read_text(),
+        plugin=None,
+        language="no",
+        prefix=f"fa-hp-{mode}-",
+        fakebin={name: FAKE for name in FAKES},
+    )
+    plugin = hostenv.fake_helper_plugin(PLUGIN, r.base / "plugin-copy", "foamy-audio-helper", HELPER)
+    if mode == "nohelper":
+        shutil.rmtree(plugin / "bin")
+    (r.root / "plugin").symlink_to(plugin, target_is_directory=True)
+    r.env.update(FOAMY_MODE=mode, FOAMY_FAKE_ERROR=FAKE_ERROR)
+    r.run(60)
+    failures = r.failures()
+    log = r.out / "helper.log"
+    expected = HELPER_CALLS if mode == "helper" else []
+    calls = lines(log)
+    status = [call for call in calls if call == "airplay|status"]
+    rest = [call for call in calls if call != "airplay|status"]
+    if len(status) != (1 if expected else 0) or rest != expected:
+        failures.append(f"FOAMY FAIL helper calls: {calls}")
+    if r.host_commands():
+        failures.append(f"FOAMY FAIL host commands ran without a fake: {r.host_commands()}")
+    result = next(
+        (line.split("FOAMY RESULT ", 1)[1] for line in r.log.splitlines() if "FOAMY RESULT" in line), "no result"
+    )
+    ok = "FOAMY DONE" in r.log and not failures
+    print(f"{'PASS' if ok else 'FAIL'} runtime helper {mode}: {result}")
+    if not ok:
+        print("\n".join("    " + line for line in (failures or r.log.splitlines()[-40:])))
+    else:
+        r.cleanup()
+    return ok
+
+
 if __name__ == "__main__":
     cases = [("4.5", "en"), ("4.5", "no"), ("4.5", "ar")]
-    results = [run(host, lang) for host, lang in cases] + [run_leftover()]
+    results = [run(host, lang) for host, lang in cases] + [run_leftover(), run_helper("helper"), run_helper("nohelper")]
     raise SystemExit(0 if all(results) else 1)
