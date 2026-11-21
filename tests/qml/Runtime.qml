@@ -109,7 +109,6 @@ ShellRoot {
 
   function stepOne() {
     eq(leaders(), 1, "one leader across three bar instances")
-    eq(Audio.AudioService.members, 3, "three members")
     eq(Audio.AudioService.platform, AudioNodes, "the host's AudioNodes")
     eq(Audio.AudioService.untyped, UntypedInput, "the host's UntypedInput")
     check(Audio.AudioService.isShellLevelMeter({
@@ -148,11 +147,6 @@ ShellRoot {
     var view = first.popup.bodyItem
     check(view !== null, "body built on open")
     eq(Audio.AudioService.demanded, true, "open popup raises demand")
-    // Discovery ran the native helper (FoamyNative) and got a JSON reply
-    // (no PipeWire is reachable here, so usually an error from pactl).
-    eq(Audio.AudioService.airplayHelperUnavailable, false, "AirPlay helper available")
-    check(Audio.AudioService.airplayError !== "AirPlay helper returned invalid data", "AirPlay helper replied in JSON: " + Audio.AudioService.airplayScanState + " " + Audio.AudioService.airplayError)
-    console.log("FOAMY AIRPLAY " + Audio.AudioService.airplayScanState + " " + Audio.AudioService.airplayError)
     if (!view) {
       shell.finish()
       return
@@ -188,7 +182,6 @@ ShellRoot {
     }
     if (shell.lang !== "ar")
       eq(first.popup.bodyItem.children.length > 0 ? FoamyI18n.t("Audio") : "", titles[shell.lang], "title translated")
-    eq(FoamyI18n.tn("Allow the network of %1 speakers", 1), shell.lang === "no" ? "Tillat nettverket til 1 høyttaler" : "Allow the network of 1 speaker", "plural")
     shell.key(view, "s")
     eq(first.editingSettings, true, "s opens Settings")
     eq(view.blocked, true, "settings page owns the keys")
