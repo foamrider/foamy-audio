@@ -119,6 +119,51 @@ class AirPlayBridgeTest(unittest.TestCase):
         self.assertEqual(reply(result), {"ok": False, "error": "Choose a local output or AirPlay speakers, not both."})
         self.assertEqual(self.fakes.calls(), [])
 
+    def test_select_without_names_returns_to_the_remembered_output(self):
+        # Unticking the last speaker: apps go back to the remembered output,
+        # then the group goes; discovery stays on.
+        self.write_state(
+            {
+                "moduleId": 50,
+                "owned": True,
+                "restoreName": "alsa_output.local",
+                "groupModuleId": 51,
+                "groupName": "foamy_airplay_group_1",
+                "selectedNames": ["raop_sink.a", "raop_sink.b"],
+            }
+        )
+        self.fakes.queue(
+            "pactl",
+            json.dumps([{"index": 62, "name": "alsa_output.local"}]),
+            "foamy_airplay_group_1",
+            "",
+            "alsa_output.local",
+            json.dumps([{"index": 9, "properties": {"application.name": "Music"}}]),
+            "",
+            "50\tmodule-raop-discover\n51\tmodule-combine-sink\tsink_name=foamy_airplay_group_1\n",
+            "",
+        )
+        result = self.run_bridge("select")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(reply(result), {"ok": True, "error": "", "selectedNames": [], "target": "alsa_output.local"})
+        self.assertEqual(
+            self.fakes.argvs(),
+            [
+                SINKS,
+                GET_DEFAULT,
+                ["pactl", "set-default-sink", "alsa_output.local"],
+                GET_DEFAULT,
+                STREAMS,
+                ["pactl", "move-sink-input", "9", "alsa_output.local"],
+                MODULES,
+                ["pactl", "unload-module", "51"],
+            ],
+        )
+        self.assertEqual(
+            self.saved(), {"moduleId": 50, "owned": True, "restoreName": "alsa_output.local", "selectedNames": []}
+        )
+        self.assertNothingLeft()
+
     def test_no_target_without_a_remembered_output(self):
         self.fakes.queue("pactl", "[]")
         result = self.run_bridge("select")
@@ -169,6 +214,7 @@ class AirPlayBridgeTest(unittest.TestCase):
             {"index": 2, "properties": {"application.name": "EasyEffects"}},
             {"index": 3, "properties": {"application.name": "Music"}},
             {"index": 4},
+            {"index": 5, "properties": {"application.name": ""}},
         ]
         self.fakes.queue(
             "pactl",
@@ -379,6 +425,16 @@ class AirPlayBridgeTest(unittest.TestCase):
         self.assertEqual(self.fakes.calls(), [])
         self.assertFalse(self.state.exists())
 
+    def test_stop_leaves_a_discovery_module_whose_id_was_reused(self):
+        # After a server restart the remembered id can name another module.
+        self.write_state({"moduleId": 30, "owned": True})
+        self.fakes.queue("pactl", "30\tmodule-null-sink\n")
+        result = self.run_bridge("stop", "--skip-restore")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(reply(result), {"ok": True, "error": "", "restoreName": ""})
+        self.assertEqual(self.fakes.argvs(), [MODULES])
+        self.assertFalse(self.state.exists())
+
     def test_module_listing_accepts_pulse_and_native_raop_names(self):
         listing = "\n536870916\tmodule-raop-discover\n27 libpipewire-module-raop-discover { }\nnot-an-id module-raop-discover\n"
         for module_id in (536870916, 27):
@@ -401,12 +457,16 @@ class AirPlayBridgeTest(unittest.TestCase):
         self.assertFalse(self.state.exists())
 
     def test_status_reports_the_last_line_of_a_pactl_failure(self):
+        # A failed listing proves nothing about the module: the session stays.
+        self.write_state({"moduleId": 12, "owned": True})
+        saved = self.state.read_text()
         self.fakes.queue(
             "pactl", {"stdout": "ignored", "stderr": "Connection failure\nConnection refused\n", "code": 1}
         )
         result = self.run_bridge("status")
         self.assertEqual(result.returncode, 1)
         self.assertEqual(reply(result), {"ok": False, "active": False, "error": "Connection refused"})
+        self.assertEqual(self.state.read_text(), saved)
 
     def test_corrupt_state_is_an_empty_session(self):
         self.state.write_text("{not json")
