@@ -42,6 +42,9 @@ PKEXEC = "/usr/bin/pkexec"
 UFW = "/usr/bin/ufw"
 RAOP_DIR = "/usr/lib/pipewire-0.3"
 RAOP_MODULE = "libpipewire-module-raop-discover.so"
+# The helper's text for a cancelled or denied pkexec. Panel.qml matches it
+# exactly, so tests/runtime.py's fake helper sends this same text.
+CANCELLED = "Administrator authorization was cancelled or denied."
 
 
 def _prefix():

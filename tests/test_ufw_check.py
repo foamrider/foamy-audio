@@ -9,7 +9,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from blackbox import PKEXEC, UFW, Fakes, needs_namespace, reply  # noqa: E402
+from blackbox import CANCELLED, PKEXEC, UFW, Fakes, needs_namespace, reply  # noqa: E402
 
 LAN = {"interface": "wlan0", "network": "192.0.2.0/24"}
 RULE = ["in", "on", "wlan0", "proto", "udp", "from", "192.0.2.0/24", "to", "any", "port", "6001:6002"]
@@ -21,7 +21,6 @@ ON_LINK = {
     "192.0.2.39": {"dst": "192.0.2.39", "dev": "wlan0", "prefsrc": "192.0.2.10"},
     "192.0.2.40": {"dst": "192.0.2.40", "dev": "wlan0"},
 }
-CANCELLED = "Administrator authorization was cancelled or denied."
 
 
 def status(*rules):

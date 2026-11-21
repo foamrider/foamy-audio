@@ -21,6 +21,7 @@ the installed /usr/share/omarchy/shell."""
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -35,8 +36,11 @@ if not os.environ.get("FOAMY_HOST_45"):
     _root = os.environ.get("OMARCHY_TEST_ROOT")
     os.environ["FOAMY_HOST_45"] = str(Path(_root) / "shell") if _root else "/usr/share/omarchy/shell"
 sys.path.insert(0, str(KIT / "preview"))
+# `python3 -I` leaves this script's directory off sys.path.
+sys.path.insert(0, str(PLUGIN / "tests"))
 import harness  # noqa: E402
 import hostenv  # noqa: E402
+from blackbox import CANCELLED
 
 
 # Fails like pactl and friends without a server; the AirPlay helper reports
@@ -232,8 +236,9 @@ def run_leftover():
 # with its arguments joined by "|" (so empty ones show). The first start,
 # the kitchen choice and verify are slow (1-1.5 s), so the scene can act
 # while they run; the answers cover refusals and replies that are not JSON.
-# The cancel text is the one ufw.rs sends and Panel.qml matches (CANCELLED in
-# tests/test_ufw_check.py).
+# The cancel text is the one the helper's black-box tests expect from ufw.rs
+# (CANCELLED in tests/blackbox.py): if the helper's text changes, this scene
+# fails until Panel.qml matches the new text.
 HELPER = """#!/bin/sh
 (IFS='|'; printf '%s\\n' "$*") >> "$FOAMY_OUT/helper.log"
 case "$1 $2" in
@@ -254,11 +259,15 @@ case "$1 $2" in
   "ufw remove")
     if [ "$3" = --legacy ]; then echo '{"state":"removed","message":"m","details":"d"}'; else echo 'not json'; fi ;;
   "ufw open")
-    echo '{"state":"error","message":"Could not apply UFW rules.","details":"Administrator authorization was cancelled or denied."}'
+    echo UFW_OPEN_REPLY
     exit 1 ;;
   *) echo '{"ok":false,"error":"fake helper: unexpected call"}'; exit 1 ;;
 esac
 """
+HELPER = HELPER.replace(
+    "UFW_OPEN_REPLY",
+    shlex.quote(json.dumps({"state": "error", "message": "Could not apply UFW rules.", "details": CANCELLED})),
+)
 START = "airplay|start|--restore-id||--restore-name|"
 STOP = "airplay|stop|--skip-restore"
 PEERS = "--peer|192.0.2.39|--peer|192.0.2.40"
