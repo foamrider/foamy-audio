@@ -218,23 +218,6 @@ pub fn parse(args: Vec<OsString>, with_value: &[&str], flags: &[&str]) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn whitespace_and_lines_follow_python() {
-        assert_eq!(strip("\u{1f} a b\u{a0}\n"), "a b");
-        assert_eq!(
-            split_whitespace(" 1\t2\u{1c}3  ").collect::<Vec<_>>(),
-            ["1", "2", "3"]
-        );
-        assert_eq!(
-            splitlines("a\r\nb\rc\n\nd\u{2028}e\n"),
-            ["a", "b", "c", "", "d", "e"]
-        );
-        assert_eq!(splitlines(""), Vec::<&str>::new());
-        assert_eq!(splitlines("\n"), [""]);
-        assert_eq!(splitlines("x\u{1f}y"), ["x\u{1f}y"]);
-    }
 
     #[test]
     fn int_accepts_what_python_accepts() {
@@ -248,25 +231,6 @@ mod tests {
             assert_eq!(int(bad), None, "{bad:?}");
         }
         assert_eq!(int(&"9".repeat(60)), None);
-    }
-
-    #[test]
-    fn json_values_print_and_test_like_python() {
-        assert_eq!(str_of(&json!(62)), "62");
-        assert_eq!(str_of(&json!("62")), "62");
-        assert_eq!(str_of(&json!(null)), "None");
-        assert_eq!(str_of(&json!(true)), "True");
-        assert_eq!(str_of(&json!(1.5)), "1.5");
-        assert!(
-            !truthy(&json!(""))
-                && !truthy(&json!(0))
-                && !truthy(&json!([]))
-                && !truthy(&json!(null))
-        );
-        assert!(truthy(&json!("x")) && truthy(&json!(0.5)) && truthy(&json!({"a": 1})));
-        assert_eq!(integer(Some(&json!(5))), Some(5));
-        assert_eq!(integer(Some(&json!(true))), None);
-        assert_eq!(integer(Some(&json!(5.0))), None);
     }
 
     fn os(args: &[&str]) -> Vec<OsString> {

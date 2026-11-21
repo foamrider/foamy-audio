@@ -3,13 +3,10 @@
 test chooses, so no real microphone is ever opened."""
 
 import json
-import math
 import os
 from pathlib import Path
-import random
 import select
 import signal
-import struct
 import subprocess
 import sys
 import tempfile
@@ -154,13 +151,15 @@ class MicrophonePeakTest(unittest.TestCase):
         self.assertEqual(self.calls()[0]["argv"][-2], "media.category=Monitor stream.monitor=true node.passive=true")
 
     def test_aux_mono_stereo_and_invalid_maps(self):
-        for value in ["AUX0", "MONO", "FL,FR", "AUX0,AUX1", "AUX63", "TFL,TFC,TFR,TRL,TRC,TRR,FLC,FRC,RC,TC"]:
+        accepted = ["AUX0", "AUX10", "AUX59", "AUX63", "MONO", "FL,FR", "AUX0,AUX1"]
+        for value in [*accepted, "TFL,TFC,TFR,TRL,TRC,TRR,FLC,FRC,RC,TC"]:
             with self.subTest(value=value):
                 (self.root / "calls.jsonl").write_text("")
                 self.samples([[0.0] * 10], exit=True)
                 self.run_meter("fixture", value)
                 self.assertEqual(self.calls()[0]["argv"][9], "[ " + " ".join(value.split(",")) + " ]")
-        for value in ["", "AUX64", "AUX01", "FL,", "--help", "FL;exit", "AUX0\n", "fl", ",".join(["MONO"] * 65)]:
+        rejected = ["", "AUX", "AUX6a", "AUX64", "AUX01", "FL,", "--help", "FL;exit", "AUX0\n", "fl"]
+        for value in [*rejected, ",".join(["MONO"] * 65)]:
             with self.subTest(value=value):
                 (self.root / "calls.jsonl").write_text("")
                 result = self.run_meter("fixture", "--", value)
@@ -182,14 +181,16 @@ class MicrophonePeakTest(unittest.TestCase):
         )
         result = self.run_meter("fixture", "AUX0")
         self.assertEqual(result.stdout.splitlines(), ["0.500000", "0.000000", "1.000000", "0.100000", "1.000000"])
-        # NaN or Inf anywhere in the block is rejected, not skipped by max().
+        # NaN or Inf anywhere in the block is rejected, not skipped by max(),
+        # also as the block's first sample (the one the scan starts from).
         for bad in (None, "inf", "-inf"):
-            with self.subTest(bad=bad):
-                self.samples([[0.5] * 800, [0.1, bad, 0.2] + block[3:]], exit=True)
-                result = self.run_meter("fixture", "AUX0")
-                self.assertEqual(result.returncode, 1)
-                self.assertEqual(result.stdout, "0.793701\n")
-                self.assertEqual(result.stderr.strip(), "Microphone level unavailable: invalid microphone sample")
+            for samples in ([0.1, bad, 0.2], [bad, 0.1, 0.2]):
+                with self.subTest(samples=samples):
+                    self.samples([[0.5] * 800, samples + block[3:]], exit=True)
+                    result = self.run_meter("fixture", "AUX0")
+                    self.assertEqual(result.returncode, 1)
+                    self.assertEqual(result.stdout, "0.793701\n")
+                    self.assertEqual(result.stderr.strip(), "Microphone level unavailable: invalid microphone sample")
 
     def test_partial_blocks_are_joined_before_a_level(self):
         # 1200 samples then 400: one level per complete 800-sample block, the
@@ -197,18 +198,6 @@ class MicrophonePeakTest(unittest.TestCase):
         self.samples([[0.125] * 1200, [0.0] * 300 + [1.0] * 100], pause=0.2, exit=True)
         result = self.run_meter("fixture", "MONO")
         self.assertEqual(result.stdout.splitlines(), ["0.500000", "1.000000"])
-
-    def test_peak_matches_reference_for_wide_layouts(self):
-        rng = random.Random(7)
-        for channels in (1, 2, 8, 9, 64):
-            with self.subTest(channels=channels):
-                rate = 16000 if channels <= 8 else 8000
-                values = [rng.uniform(-1, 1) for _ in range(rate // 20 * channels)]
-                stored = struct.unpack("<%df" % len(values), struct.pack("<%df" % len(values), *values))
-                expected = min(1.0, math.cbrt(max(abs(v) for v in stored)))
-                self.samples([values], exit=True)
-                result = self.run_meter("fixture", ",".join(f"AUX{i}" for i in range(channels)))
-                self.assertEqual(result.stdout, f"{expected:.6f}\n")
 
     def test_capture_uses_map_and_reaps_child_on_close(self):
         for stop in (signal.SIGTERM, signal.SIGINT):

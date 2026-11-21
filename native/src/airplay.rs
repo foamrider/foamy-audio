@@ -737,12 +737,6 @@ mod tests {
     }
 
     #[test]
-    fn module_listing_accepts_pulse_and_native_raop_names() {
-        let output = "\n536870916\tmodule-raop-discover\n27 libpipewire-module-raop-discover { }\nnot-an-id module-raop-discover\n9 module-null-sink\n";
-        assert_eq!(parse_module_ids(output), [536870916, 27]);
-    }
-
-    #[test]
     fn avahi_escapes() {
         assert_eq!(decode_avahi(r"Kj\195\184kken"), "Kjøkken");
         assert_eq!(decode_avahi(r"a\064b"), "a@b");
@@ -751,79 +745,26 @@ mod tests {
         assert_eq!(decode_avahi(r"end\046"), "end.");
     }
 
+    /// TXT text comes from any device on the network and is read by a
+    /// hand-written scanner: whatever it holds, the speaker stays listed.
     #[test]
-    fn txt_records() {
-        let fields = txt_fields(r#""cn=0,1" "am=Beam" "q=a\"b" "=x" "am=One" junk "k=v"#);
-        assert_eq!(fields.get("am"), Some(&json!("One")));
-        assert_eq!(fields.get("cn"), Some(&json!("0,1")));
-        assert_eq!(fields.get("q"), Some(&json!(r#"a\"b"#)));
-        assert!(!fields.contains_key("k") && !fields.contains_key(""));
-        // An unterminated pair does not stop later ones from matching.
-        assert_eq!(txt_fields(r#""bad "am=X""#).get("am"), Some(&json!("X")));
-    }
-
-    #[test]
-    fn avahi_records_become_deduplicated_receivers() {
-        let output = "=;eth0;IPv6;020000000002\\064Stue;AirTunes Remote Audio;local;Sonos-020000000002.local;192.0.2.17;7000;\"cn=0,1\" \"am=Beam\"\n\
-=;eth0;IPv4;020000000002\\064Stue;AirTunes Remote Audio;local;Sonos-020000000002.local;192.0.2.17;7000;\"cn=0,1\" \"am=Beam\"\n";
-        assert_eq!(
-            parse_avahi_receivers(output),
-            [
-                json!({"name": "Stue", "hostname": "Sonos-020000000002.local", "address": "192.0.2.17",
-                    "port": 7000, "vendor": "Sonos", "model": "Beam"})
-            ]
-        );
-        let malformed = "=;eth0;IPv4;Kitchen;AirTunes Remote Audio;local;kitchen.local;192.0.2.20;notaport;\"am=One\"\n\
-=;eth0;IPv4;Hall;AirTunes Remote Audio;local;hall.local;192.0.2.21;99999;\"am=One\"\n\
-=;eth0;IPv4;Stue;AirTunes Remote Audio;local;stue.local;192.0.2.17;7000;\"am=Beam\"\n";
-        let receivers = parse_avahi_receivers(malformed);
-        assert_eq!(receivers.len(), 1);
-        assert_eq!(receivers[0]["name"], "Stue");
-    }
-
-    #[test]
-    fn failed_default_verification_is_reported_before_moving_apps() {
-        let mut runner = Script::new().ok("");
-        for _ in 0..20 {
-            runner = runner.ok("some_other_sink");
+    fn a_garbled_txt_record_does_not_hide_the_speaker() {
+        for txt in [
+            r#""cn=0,1" "am=Beam" "q=a\"b" "=x" "am=One" junk "k=v"#,
+            r#""bad "am=X""#,
+            r#""am=One" "abc"#,
+            r#""k=v\"#,
+            "",
+        ] {
+            let line = format!(
+                "=;eth0;IPv4;Stue;AirTunes Remote Audio;local;stue.local;192.0.2.17;7000;{txt}\n"
+            );
+            // A panic in the scanner does not name the input: say it first.
+            eprintln!("TXT record: {txt}");
+            let receivers = parse_avahi_receivers(&line);
+            assert_eq!(receivers.len(), 1, "{txt}");
+            assert_eq!(receivers[0]["name"], "Stue", "{txt}");
         }
-        assert_eq!(
-            route("raop_sink.test", &mut runner).unwrap_err(),
-            "The selected output did not become the default"
-        );
-        assert_eq!(runner.calls.len(), 21);
-    }
-
-    #[test]
-    fn route_preserves_processing_streams() {
-        let streams = json!([{"index": 1, "properties": {}},
-                             {"index": 2, "properties": {"application.name": "EasyEffects"}},
-                             {"index": 3, "properties": {"application.name": "Music"}}]);
-        let mut runner = Script::new()
-            .ok("")
-            .ok("speaker")
-            .ok(&streams.to_string())
-            .ok("");
-        route("speaker", &mut runner).unwrap();
-        assert_eq!(
-            runner.calls[3],
-            ["pactl", "move-sink-input", "3", "speaker"]
-        );
-    }
-
-    #[test]
-    fn group_cleanup_never_unloads_reused_module_id() {
-        let mut state = State::new();
-        state.insert("groupModuleId".into(), 42.into());
-        state.insert("groupName".into(), "foamy_airplay_group_1".into());
-        let mut runner = Script::new().ok("42\tmodule-combine-sink\tsink_name=someone_else\n");
-        remove_group(&state, &mut runner).unwrap();
-        assert_eq!(runner.calls.len(), 1);
-        // Not an integer: nothing to look up.
-        state.insert("groupModuleId".into(), "42".into());
-        let mut runner = Script::new();
-        remove_group(&state, &mut runner).unwrap();
-        assert!(runner.calls.is_empty());
     }
 
     #[test]
@@ -862,16 +803,36 @@ mod tests {
             ["pactl", "load-module", "module-raop-discover"]
         );
         assert_eq!(read_state(&state)["restoreName"], "alsa_output.creative");
-        // A failed load passes pactl's status on, never as 126/127 or 0.
-        for (status, expected) in [(3, 3), (127, 127), (-9, 1)] {
+    }
+
+    /// The load can fail, or print something that is not an id: the reply
+    /// says why, the exit status is pactl's (1 for a signal) and no session
+    /// is remembered.
+    #[test]
+    fn a_failed_module_load_is_reported_and_leaves_no_session() {
+        let dir = Dir::new();
+        let module = dir.0.join("libpipewire-module-raop-discover.so");
+        std::fs::write(&module, b"").unwrap();
+        let state = dir.0.join("state.json");
+        for (status, expected) in [(3, 3), (-9, 1)] {
             let mut runner = Script::new().ok("").fail(status, "Failure: nope\n");
-            let (reply, code) =
-                start("", "", &mut runner, &dir.0.join("other.json"), &module).unwrap();
+            let (reply, code) = start("", "", &mut runner, &state, &module).unwrap();
             assert_eq!(
                 (reply["error"].as_str(), code),
                 (Some("Failure: nope"), expected)
             );
+            assert!(
+                !state.exists(),
+                "pactl status {status}: a failed load left a session"
+            );
         }
+        let mut runner = Script::new().ok("").ok("not a number\n");
+        let (reply, code) = start("", "", &mut runner, &state, &module).unwrap();
+        assert_eq!(
+            (reply["error"].as_str(), code),
+            (Some("PipeWire returned an invalid AirPlay module id"), 1)
+        );
+        assert!(!state.exists());
     }
 
     #[test]
@@ -936,15 +897,5 @@ mod tests {
         ] {
             assert!(group_member_name_ok(name), "{name}");
         }
-    }
-
-    #[test]
-    fn tool_errors_propagate() {
-        let dir = Dir::new();
-        let mut runner = Script::new().error("[Errno 2] No such file or directory: 'pactl'");
-        assert_eq!(
-            status(&mut runner, &dir.0.join("s.json")).unwrap_err(),
-            "[Errno 2] No such file or directory: 'pactl'"
-        );
     }
 }

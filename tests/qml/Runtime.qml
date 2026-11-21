@@ -7,9 +7,10 @@ import "plugin" as Audio
 import "plugin/kit"
 
 // Foamy Audio under a real host shell, offscreen: three bar instances (as on
-// three monitors), one leader, the host's platform helpers, the lazy popup
-// body, the single keyboard cursor, settings
-// saving through the bar, translations and RTL mirroring.
+// three monitors), one leader, the host's platform helpers, the bar button
+// and its one setting, the lazy popup body in its empty state (no audio
+// server), the single keyboard cursor, unfolding a section below the fold,
+// settings saving through the bar, translations and RTL mirroring.
 ShellRoot {
   id: shell
   readonly property string host: Quickshell.env("FOAMY_HOST")
@@ -109,26 +110,36 @@ ShellRoot {
 
   function stepOne() {
     eq(leaders(), 1, "one leader across three bar instances")
-    eq(Audio.AudioService.members, 3, "three members")
-    eq(Audio.AudioService.platform, AudioNodes, "the host's AudioNodes")
-    eq(Audio.AudioService.untyped, UntypedInput, "the host's UntypedInput")
+    // The host object the service drives a virtual default input through.
+    var untyped = Audio.AudioService.untyped
+    check(typeof untyped.setVolume === "function" && typeof untyped.setMuted === "function", "the host's UntypedInput offers setVolume and setMuted")
+    check(untyped.active !== undefined && untyped.known !== undefined && untyped.volume !== undefined && untyped.muted !== undefined, "the host's UntypedInput offers active, known, volume and muted")
     check(Audio.AudioService.isShellLevelMeter({
       name: "quickshell-peak-monitor"
     }), "shell level meter filtered")
     eq(Audio.AudioService.platformHides({
       name: "alsa_output.speakers"
     }), false, "no platform hints here")
+    // A second resolve while the startup run of omarchy-audio-output-sink is
+    // still going (the fake takes 2 s): its answer is stale and must lose to
+    // a rerun (checked at the end). If the startup run already ended, the
+    // end check would pass without the rerun: fail here instead.
+    Audio.AudioService.resolveVolumeSink()
+    check(Audio.AudioService.volumeSinkStale, "fixture: the second resolve lands while the startup run is still going")
     var first = panels.itemAt(0)
     // No PipeWire offscreen: the bar shows the no-output glyph, never an empty button.
     eq(first.barGlyph(), "\ueee8", "bar glyph without an output")
     eq(first.popup.bodyItem, null, "popup body is lazy")
+    // An app's icon name is text from the app: never a remote image.
+    eq(first.appIconSource("https://example.invalid/icon.png"), "", "a stream's icon name never becomes a remote image")
+    eq(String(first.appIconSource("/usr/share/icons/x.png")), "file:///usr/share/icons/x.png", "an absolute path becomes a file URL")
     // The bar tooltip carries the output's own name: bounded like FoamyText.tooltip.
     var button = findType(first, function (item) {
       return item.tooltipText !== undefined && item.labelVisible !== undefined
     })
     check(button !== null, "bar button found")
     if (button)
-      eq(button.tooltipText, first.barTooltip(""), "bar tooltip without an output")
+      eq(button.tooltipText, FoamyI18n.t("Audio"), "bar tooltip without an output")
     var long = first.barTooltip("Speaker ".repeat(40) + "\n1\n2\n3\n4\n5\n6\n7")
     var lines = long.split("\n")
     eq(lines.length, 6, "a long output name keeps at most six tooltip lines")
@@ -136,11 +147,48 @@ ShellRoot {
       return line.length <= 100
     }), "tooltip lines stay within 100 characters: " + JSON.stringify(long))
     check(long.indexOf("…") > 0, "a cut tooltip shows the ellipsis")
+    // The one setting: the percentage next to the glyph, never on a vertical bar.
+    percent = findType(button, function (item) {
+      return item.text === FoamyI18n.t("%1%", 0) && item.textFormat !== undefined
+    })
+    check(percent !== null, "bar percentage found")
+    if (percent) {
+      eq(percent.visible, true, "the bar shows the percentage")
+      mockBar.position = "left"
+      eq(percent.visible, false, "a vertical bar hides the percentage")
+      mockBar.position = "top"
+    }
     eq(Audio.AudioService.demanded, false, "no demand while closed")
-    first.open()
+    if (!button) {
+      shell.finish()
+      return
+    }
+    barButton = button
+    button.pressed(Qt.LeftButton)
     wait.waitFor(function () {
       return first.popup.bodyItem !== null
     }, 10000, stepTwo, "body built on open")
+  }
+  property var barButton: null
+  property var percent: null
+
+  function top(flick, item) {
+    return item.mapToItem(flick.contentItem, 0, 0).y
+  }
+  function sectionText(view, name, text) {
+    return findType(view.sectionItem(name), function (item) {
+      return item.text === text && item.visible && item.textFormat !== undefined
+    })
+  }
+  // Rows of nodes that do not exist: the delegates take the "node is gone" path.
+  function fakeRows(base, count) {
+    var rows = []
+    for (var i = 0; i < count; i++)
+      rows.push({
+        id: base + i,
+        name: "fake.node." + (base + i)
+      })
+    return rows
   }
 
   function stepTwo() {
@@ -148,15 +196,29 @@ ShellRoot {
     var view = first.popup.bodyItem
     check(view !== null, "body built on open")
     eq(Audio.AudioService.demanded, true, "open popup raises demand")
-    // Discovery ran the native helper (FoamyNative) and got a JSON reply
-    // (no PipeWire is reachable here, so usually an error from pactl).
-    eq(Audio.AudioService.airplayHelperUnavailable, false, "AirPlay helper available")
-    check(Audio.AudioService.airplayError !== "AirPlay helper returned invalid data", "AirPlay helper replied in JSON: " + Audio.AudioService.airplayScanState + " " + Audio.AudioService.airplayError)
-    console.log("FOAMY AIRPLAY " + Audio.AudioService.airplayScanState + " " + Audio.AudioService.airplayError)
     if (!view) {
       shell.finish()
       return
     }
+    // What the popup shows without an audio server: the empty state.
+    var band = findType(view, function (item) {
+      return item.title !== undefined && item.meta !== undefined && item.settingsHasCursor !== undefined
+    })
+    check(band !== null, "hero band found")
+    var shown = {
+      en: ["Audio", "No output devices"],
+      no: ["Lyd", "Ingen utgangsenheter"],
+      ar: ["Audio", "No output devices"]
+    }[shell.lang]
+    if (band) {
+      eq(band.title, shown[0], "the band's title in this language")
+      eq(band.meta, shown[1], "the band names the missing output in this language")
+    }
+    check(findType(view, function (item) {
+      return item.text === "—" && item.textFormat !== undefined && item.visible
+    }) !== null, "the volume numeral is a dash without an output")
+    check(sectionText(view, "output", FoamyI18n.t("No output devices")) !== null, "Output says there are no output devices")
+    check(sectionText(view, "input", FoamyI18n.t("No input devices")) !== null, "Input says there are no input devices")
     eq(view.cursorKey, "", "no cursor highlight on open")
     view.moveRequested(0, 1)
     eq(view.cursorKey, "volume", "first move lands on the volume slider")
@@ -168,8 +230,12 @@ ShellRoot {
     check(slider !== null, "header slider found")
     if (slider) {
       eq(slider.hasCursor, true, "the cursor on the volume rings the slider thumb")
-      var hero = slider.parent ? slider.parent.parent : null
-      eq(hero && hero.color !== undefined, false, "no filled row behind the header slider")
+      eq(slider.enabled, false, "the header slider is disabled without an output")
+      eq(slider.mirrored, shell.lang === "ar", "the volume slider mirrors in RTL only")
+      // Up to the band (its own surface is not a row behind the slider).
+      for (var item = slider.parent; item && item !== band; item = item.parent)
+        if (item.color !== undefined)
+          check(!item.visible || item.color.a === 0, "nothing filled behind the header slider while the cursor is on volume: " + item)
     }
     view.moveRequested(0, -1)
     eq(view.cursorKey, "settings", "up from the slider reaches the header")
@@ -177,18 +243,38 @@ ShellRoot {
     eq(view.cursorKey, FoamyI18n.rightToLeft ? "settings" : "inputMute", "h moves along the header in reading order")
     shell.key(view, "o")
     eq(view.outputExpanded, false, "o folds Output")
+    // Enough inputs that Wireless starts below the fold.
+    first.displayAudioSources = fakeRows(9000, 40)
+    var flick = view.wheel.target
+    wait.waitFor(function () {
+      return flick.contentHeight > flick.height + 100
+    }, 5000, stepTwoScroll, "fixture: the list overflows")
+  }
+
+  function stepTwoScroll() {
+    var first = panels.itemAt(0)
+    var view = first.popup.bodyItem
+    var flick = view.wheel.target
+    var wireless = view.sectionItem("wireless")
+    eq(flick.contentY, 0, "fixture: list at the top")
+    check(top(flick, wireless) + wireless.height > flick.contentY + flick.height, "fixture: Wireless starts below the fold")
+    // Folded, the section is its header row.
+    var header = wireless.height
     shell.key(view, "w")
     eq(view.wirelessExpanded, true, "w unfolds Wireless")
-    check(view.wheel._following === view.sectionItem("wireless"), "unfolding scrolls Wireless into view")
+    // The header row at least: the section's last pixels can stay below the
+    // fold, because FoamyWheelScroll refollows the growing section before
+    // the Flickable's contentHeight has grown.
+    wait.waitFor(function () {
+      var y = shell.top(flick, wireless)
+      return first.displayAudioSources.length === 40 && flick.contentY > 0 && y >= flick.contentY - 1 && y + header <= flick.contentY + flick.height + 1
+    }, 5000, stepTwoSettings, "unfolding scrolls Wireless into view")
+  }
+
+  function stepTwoSettings() {
+    var first = panels.itemAt(0)
+    var view = first.popup.bodyItem
     eq(view.LayoutMirroring.enabled, shell.lang === "ar", "popup body mirrors in RTL only")
-    var titles = {
-      en: "Audio",
-      no: "Lyd",
-      ar: "Audio"
-    }
-    if (shell.lang !== "ar")
-      eq(first.popup.bodyItem.children.length > 0 ? FoamyI18n.t("Audio") : "", titles[shell.lang], "title translated")
-    eq(FoamyI18n.tn("Allow the network of %1 speakers", 1), shell.lang === "no" ? "Tillat nettverket til 1 høyttaler" : "Allow the network of 1 speaker", "plural")
     shell.key(view, "s")
     eq(first.editingSettings, true, "s opens Settings")
     eq(view.blocked, true, "settings page owns the keys")
@@ -209,9 +295,18 @@ ShellRoot {
       eq(mockBar.saved[0].settings.showPercentage, false, "saved value")
       eq(mockBar.saved[0].settings.extra, "kept", "unknown keys kept")
     }
+    if (percent)
+      eq(percent.visible, false, "the saved setting hides the bar percentage at once")
     first.closeSettings()
     eq(view.blocked, false, "back from Settings")
-    first.close()
+    // Rows in every list right before the close: a closed popup holds none.
+    first.displayAudioSources = fakeRows(9000, 40)
+    first.displayAudioSinks = fakeRows(9100, 1)
+    first.displayAudioStreams = fakeRows(9200, 1)
+    first.displayWirelessAudioSinks = fakeRows(9300, 1)
+    eq([first.displayAudioSources.length, first.displayAudioSinks.length, first.displayAudioStreams.length, first.displayWirelessAudioSinks.length].join(","), "40,1,1,1", "fixture: rows present while open")
+    barButton.pressed(Qt.LeftButton)
+    eq(first.opened, false, "the bar button closes the popup")
     eq(Audio.AudioService.demanded, false, "closing releases demand")
     wait.waitFor(function () {
       return !Audio.AudioService.wanted
@@ -219,7 +314,8 @@ ShellRoot {
   }
 
   function stepThree() {
-    eq(panels.itemAt(0).displayAudioSinks.length, 0, "rows dropped while closed")
+    var first = panels.itemAt(0)
+    eq([first.displayAudioSources.length, first.displayAudioSinks.length, first.displayAudioStreams.length, first.displayWirelessAudioSinks.length].join(","), "0,0,0,0", "rows dropped while closed")
     wait.waitFor(function () {
       return !Audio.AudioService.airplayScanning
     }, 30000, airplaySettled, "discovery settles")
@@ -250,7 +346,7 @@ ShellRoot {
         meterProc = kids[i]
     check(meterProc !== null, "meter process found")
     if (!meter || !meterProc) {
-      shell.finish()
+      shell.volumeSink()
       return
     }
     eq(meterProc.running, false, "meter idle while closed")
@@ -264,21 +360,24 @@ ShellRoot {
     eq(shell.meter.stderrHead.length, shell.meter.stderrLimit, "meter keeps only the head of a stderr flood")
     eq(shell.meter.stderrHead.replace(/x/g, ""), "", "kept head is the helper's output")
     eq(shell.meter.failure, "", "a closed meter reports no failure")
-    shell.finish()
+    shell.volumeSink()
   }
 
-  property int holdMs: Number(Quickshell.env("FOAMY_HOLD_MS") || 0)
-  function finish() {
-    console.log("FOAMY RESULT " + host + "/" + lang + " " + checks + " checks, " + failures + " failures")
-    console.log("FOAMY READY")
-    finishTimer.start()
+  // tests/runtime.py compares the name with the number of runs the fake
+  // omarchy-audio-output-sink counted: the last run's answer must win.
+  function volumeSink() {
+    wait.waitFor(function () {
+      return Audio.AudioService.volumeSinkName !== ""
+    }, 10000, function () {
+      console.log("FOAMY VOLUME SINK " + Audio.AudioService.volumeSinkName)
+      shell.finish()
+    }, "a volume sink resolved")
   }
-  Timer {
-    id: finishTimer
-    interval: shell.holdMs
-    onTriggered: {
-      console.log("FOAMY DONE")
-      Qt.quit()
-    }
+
+  // tests/runtime.py calls the IPC handler after FOAMY READY, then stops qs.
+  function finish() {
+    console.log("FOAMY RESULT " + host + "/" + lang + " " + checks + " checks, " + failures + " failures (a wait that timed out is reported on its own line)")
+    console.log("FOAMY DONE")
+    console.log("FOAMY READY")
   }
 }

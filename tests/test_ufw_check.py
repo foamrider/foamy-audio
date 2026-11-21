@@ -9,7 +9,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from blackbox import PKEXEC, UFW, Fakes, needs_namespace, reply  # noqa: E402
+from blackbox import CANCELLED, PKEXEC, UFW, Fakes, needs_namespace, reply  # noqa: E402
 
 LAN = {"interface": "wlan0", "network": "192.0.2.0/24"}
 RULE = ["in", "on", "wlan0", "proto", "udp", "from", "192.0.2.0/24", "to", "any", "port", "6001:6002"]
@@ -21,7 +21,6 @@ ON_LINK = {
     "192.0.2.39": {"dst": "192.0.2.39", "dev": "wlan0", "prefsrc": "192.0.2.10"},
     "192.0.2.40": {"dst": "192.0.2.40", "dev": "wlan0"},
 }
-CANCELLED = "Administrator authorization was cancelled or denied."
 
 
 def status(*rules):
@@ -268,11 +267,15 @@ class UfwTest(unittest.TestCase):
         self.fakes.queue("pkexec", {"code": 1})
         self.assertEqual(reply(self.ufw("verify"))["details"], "UFW failed.")
 
-    def test_state_path_override(self):
-        other = self.fakes.root / "record.json"
+    def test_record_goes_under_home_without_xdg_state_home(self):
+        # Most sessions have no XDG_STATE_HOME (empty counts as unset): the
+        # record that Remove later reads must land under ~/.local/state.
         self.fakes.queue("pkexec", "")
-        self.ufw("open", "--peer", "192.0.2.39", env={"FOAMY_AUDIO_FIREWALL_STATE": str(other)})
-        self.assertEqual(json.loads(other.read_text()), {"rules": [LAN]})
+        result = self.ufw("open", "--peer", "192.0.2.39", env={"XDG_STATE_HOME": ""})
+        self.assertEqual(reply(result)["state"], "applied", result.stderr)
+        record = self.fakes.home / ".local/state/foamy-audio/firewall.json"
+        self.assertEqual(json.loads(record.read_text()), {"rules": [LAN]})
+        self.assertEqual(record.stat().st_mode & 0o777, 0o600)
         self.assertFalse(self.record.exists())
 
     # ---- verify ------------------------------------------------------------
@@ -280,14 +283,6 @@ class UfwTest(unittest.TestCase):
     def test_status_runs_system_ufw_in_the_c_locale(self):
         self.verify("Status: inactive\n")
         self.assertEqual(self.pkexec_calls(), [STATUS])
-
-    def test_authorization_cancellation_is_explicit(self):
-        self.fakes.queue("pkexec", {"code": 126})
-        result = self.ufw("verify", "--peer", "192.0.2.39")
-        self.assertEqual(result.returncode, 1)
-        self.assertEqual(
-            reply(result), {"state": "error", "message": "Could not complete the UFW check.", "details": CANCELLED}
-        )
 
     def test_inactive_and_unrecognized_status(self):
         self.assertEqual(

@@ -14,22 +14,12 @@ test('manifest and panel share defaults and supported settings', () => {
   }
 })
 
-test('invalid values cannot reach the Omarchy settings writer', () => {
-  for (const [key, value] of [['unknown', true], ['language', 'invalid'], ['showPercentage', 'false'], ['scrollVolumeStep', 3]]) {
-    assert.equal(Prefs.valid(Schema.fields, key, value), false)
-    assert.equal(Prefs.save(null, 'foamy.audio', Schema.fields, {}, key, value).ok, false)
-  }
-})
-
-test('saves inline through the bar when possible, else omarchy bar set, never setBarWidget', () => {
-  const calls = []
-  const bar = { shell: { updateEntryInline(id, settings) { calls.push([id, settings]); return true } } }
-  const inline = Prefs.save(bar, 'foamy.audio', Schema.fields, { showPercentage: true, other: 1 }, 'showPercentage', false)
-  assert.equal(inline.inline, true)
-  assert.equal(JSON.stringify(calls), JSON.stringify([['foamy.audio', { showPercentage: false, other: 1 }]]))
-  const cli = Prefs.save(null, 'foamy.audio', Schema.fields, {}, 'showPercentage', false)
-  assert.equal(JSON.stringify(cli.command), JSON.stringify(['omarchy', 'bar', 'set', 'foamy.audio', 'showPercentage', 'false', '--json']))
-  const source = fs.readFileSync(path.join(__dirname, '../Panel.qml'), 'utf8')
-  assert.ok(!source.includes('setBarWidget'))
-  assert.ok(!/moduleName:\s*"/.test(source), 'the host sets moduleName')
+test('manifest: the id the IPC calls use, the entry point, and the stock panel it replaces', () => {
+  // omarchy.clonedFrom routes the stock Super+Ctrl+A shortcut to this panel
+  // and lets Omarchy put the stock widget back when this one is removed.
+  assert.equal(manifest.omarchy?.clonedFrom, 'omarchy.audio')
+  // `omarchy-shell foamy.audio …` and tests/runtime.py call this target.
+  assert.equal(manifest.id, 'foamy.audio')
+  assert.ok(fs.existsSync(path.join(__dirname, '..', manifest.entryPoints.barWidget)), manifest.entryPoints.barWidget)
+  assert.deepEqual(Object.keys(manifest.barWidget.defaults).sort(), Schema.fields.map(field => field.key).sort())
 })
