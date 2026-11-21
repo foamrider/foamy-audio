@@ -212,3 +212,15 @@ test("a hung input switch ends at its deadline", () => {
     fs.rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test("sink availability: one name and flag per line; a failed script hides nothing", () => {
+  for (const [raw, expected] of [
+    ["alsa_output.a\t1\nalsa_output.b\t0\n", { "alsa_output.a": true, "alsa_output.b": false }],
+    ["\n \nno-tab-line\nname\t1\r\nother\t0\r\n", { name: true, other: false }],
+    ["y\t0\textra\nz\t00\nw\tno\n", { y: false, z: true, w: true }],
+    ["", {}],
+    [null, {}],
+    [undefined, {}],
+  ])
+    assert.deepEqual(Model.parseSinkAvailability(raw), expected, JSON.stringify(raw))
+})
