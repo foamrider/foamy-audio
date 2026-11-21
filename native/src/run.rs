@@ -160,14 +160,50 @@ pub mod tests {
         }
     }
 
+    /// Set in the copy of the test binary that the C-locale test starts.
+    const LOCALE_CHILD: &str = "FOAMY_AUDIO_TEST_LOCALE_CHILD";
+    /// That copy's starting locale: a real one that is not C, so its tools
+    /// print C only when the runner sets it.
+    const START_LOCALE: &str = "C.UTF-8";
+
     #[test]
     fn a_finished_tool_gives_its_status_and_output_in_the_c_locale() {
-        // The child inherits the caller's environment: under LC_ALL=C this
-        // test could not see a runner that forgets to set the C locale.
-        assert_ne!(
+        if std::env::var_os(LOCALE_CHILD).is_some() {
+            return finished_tool_in_the_c_locale();
+        }
+        // A tool inherits this process's environment, and the caller's LC_ALL
+        // can already be C: then a runner that forgets the C locale would
+        // pass. So the check runs in a copy of this test binary that starts
+        // from another locale. std::env::set_var here would race the test
+        // threads.
+        let path = module_path!();
+        let name = format!(
+            "{}::a_finished_tool_gives_its_status_and_output_in_the_c_locale",
+            path.split_once("::").map_or(path, |(_, rest)| rest)
+        );
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([name.as_str(), "--exact", "--test-threads=1"])
+            .env(LOCALE_CHILD, "1")
+            .env("LC_ALL", START_LOCALE)
+            .output()
+            .unwrap();
+        let report = format!(
+            "{}{}",
+            String::from_utf8_lossy(&child.stdout),
+            String::from_utf8_lossy(&child.stderr)
+        );
+        // " 1 passed;": the name matched, so the copy really ran the check.
+        assert!(
+            child.status.success() && report.contains(" 1 passed;"),
+            "the check, started with LC_ALL={START_LOCALE}:\n{report}"
+        );
+    }
+
+    fn finished_tool_in_the_c_locale() {
+        assert_eq!(
             std::env::var("LC_ALL").as_deref(),
-            Ok("C"),
-            "fixture: run this test without LC_ALL=C"
+            Ok(START_LOCALE),
+            "fixture: the copy's starting locale"
         );
         // A generous deadline: these tools must finish, also on a loaded machine.
         let mut runner = System {
