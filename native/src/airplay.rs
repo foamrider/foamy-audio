@@ -589,11 +589,20 @@ pub fn select(
         // A new group that is not saved would stay loaded with no record for
         // a later select or stop to unload it. Without one, the previous
         // group is still recorded and nothing is left behind.
-        return Err(if group.is_empty() {
+        let error = if group.is_empty() {
             error
         } else {
             roll_back(error, Some(&previous), &group, runner)
-        });
+        };
+        // The save fails after the file was replaced when only syncing its
+        // directory fails. The file then no longer records the previous
+        // group, which is still loaded: record the previous state again.
+        if read_state(path) == state
+            && let Err(rewrite) = write_state(path, &recorded)
+        {
+            return Err(rewrite);
+        }
+        return Err(error);
     }
     if let Err(error) = remove_group(&recorded, runner) {
         let error = if group.is_empty() {

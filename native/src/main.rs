@@ -94,10 +94,11 @@
 //!   previous output, saving the state or removing the previous group fails,
 //!   it is removed again the same way (routing back first once routing
 //!   began; this cleanup can fail too, then the group stays loaded with no
-//!   record). When removing the previous group fails, the previous state is
-//!   written back so that group stays recorded (a failing write's error then
-//!   replaces the reply's). Without a new group, a failed save or removal
-//!   leaves the new route in place.
+//!   record). When removing the previous group fails, or a failed save still
+//!   replaced the file (only syncing its directory failed), the previous
+//!   state is written back so that group stays recorded (a failing write's
+//!   error then replaces the reply's). Without a new group, a failed save
+//!   or removal leaves the new route in place.
 //! - Routing to a sink: `pactl set-default-sink <sink>`, then up to 20 times
 //!   `pactl get-default-sink` 100 ms apart until it answers the sink (else
 //!   "The selected output did not become the default"), then `pactl -f
