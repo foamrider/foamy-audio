@@ -50,6 +50,8 @@
   "An AirPlay speaker is no longer available. Reopen the panel.": "En AirPlay-høyttaler er ikke lenger tilgjengelig. Åpne panelet på nytt.",
   "An AirPlay speaker's name can't be used in a group.": "Navnet til en AirPlay-høyttaler kan ikke brukes i en gruppe.",
   "No local output is available": "Ingen lokal utgang er tilgjengelig",
+  "Output changed, but an earlier AirPlay group could not be removed.": "Utgangen er byttet, men en tidligere AirPlay-gruppe kunne ikke fjernes.",
+  "Output changed, but the AirPlay session could not be saved.": "Utgangen er byttet, men AirPlay-økten kunne ikke lagres.",
   "Microphone level unavailable": "Mikrofonnivå er utilgjengelig",
   "AirPlay speaker": "AirPlay-høyttaler",
   "Unknown": "Ukjent",

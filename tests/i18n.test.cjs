@@ -79,10 +79,12 @@ function scanned(label, source, patterns, known) {
   for (const text of texts) assert.ok(Object.hasOwn(en, text), `${label}: missing catalog entry ${text}`);
 }
 const rust = name => fs.readFileSync(path.join(root, 'native/src', name), 'utf8');
-scanned('airplay.rs', rust('airplay.rs'), ['(?:last_line\\(&result, |refuse\\(|"error": )'], [
+scanned('airplay.rs', rust('airplay.rs'), ['(?:last_line\\(&result, |refuse\\(|failed_after_routing\\(\\s*|"error": )'], [
   'Could not inspect PipeWire modules',
   'PipeWire returned an invalid AirPlay module id',
   'Could not stop AirPlay discovery',
+  'Output changed, but an earlier AirPlay group could not be removed.',
+  'Output changed, but the AirPlay session could not be saved.',
 ]);
 const ufw = rust('ufw.rs');
 const errorMessage = ufw.slice(ufw.indexOf('fn error_message'), ufw.indexOf('\n}\n', ufw.indexOf('fn error_message')));

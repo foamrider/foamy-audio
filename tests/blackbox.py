@@ -91,9 +91,9 @@ def needs_namespace(*paths):
 
 
 # One script for every queued fake: log the call, answer with the tool's next
-# queued response ({"stdout", "stderr", "code", "sleep"}).
+# queued response ({"stdout", "stderr", "code", "sleep"}, or "stop_helper").
 QUEUED = """#!{python} -I
-import fcntl, json, os, sys, time
+import fcntl, json, os, signal, sys, time
 here = {here!r}
 name = os.path.basename(sys.argv[0])
 with open(os.path.join(here, "lock"), "a") as lock:
@@ -118,6 +118,11 @@ with open(os.path.join(here, "lock"), "a") as lock:
 if response is None:
     print("fake " + name + ": no response queued", file=sys.stderr)
     sys.exit(99)
+if response.get("stop_helper"):
+    # Like a shell that quits or reloads while the helper waits for this
+    # call: the helper ends at once, before it can act on any answer.
+    os.kill(os.getppid(), signal.SIGKILL)
+    sys.exit(0)
 if response.get("echo_default"):
     # Like WirePlumber once it applied the change: the sink set last.
     response["stdout"] = open(default).read() + "\\n"
