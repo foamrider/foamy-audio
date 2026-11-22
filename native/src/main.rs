@@ -88,7 +88,8 @@
 //!   failing rollback's error, then a failing cleanup's, replaces it; any
 //!   failure rolls back, where Python skipped it for malformed pactl JSON);
 //!   on success save `groupModuleId`/`groupName` (or drop them) and
-//!   `selectedNames`, then remove the previous group. Reply
+//!   `selectedNames`, then remove the previous group (without a new group,
+//!   remove it first, so the state records it until it is unloaded). Reply
 //!   `{"ok":true,"error":"","selectedNames","target"}`.
 //!   Once its id is read, a new group is not left behind: when reading the
 //!   previous output, saving the state or removing the previous group fails,

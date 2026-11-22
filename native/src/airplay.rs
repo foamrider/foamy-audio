@@ -567,8 +567,14 @@ pub fn select(
         return Err(roll_back(error, Some(&previous), &group, runner));
     }
     let recorded = state.clone();
-    // The new state is saved before the previous group goes: a failed save
-    // then still finds that group loaded, so routing back to it works.
+    // Without a new group there is nothing to roll back, so the previous
+    // group goes first: the file records it until it is unloaded, also when
+    // the helper is stopped meanwhile. With a new group, the new state is
+    // saved first: a failed save then still finds the previous group loaded,
+    // so routing back to it works.
+    if group.is_empty() {
+        remove_group(&recorded, runner)?;
+    }
     let saved = (|| {
         state.remove("groupModuleId");
         state.remove("groupName");
@@ -586,14 +592,12 @@ pub fn select(
         write_state(path, &state)
     })();
     if let Err(error) = saved {
+        if group.is_empty() {
+            return Err(error);
+        }
         // A new group that is not saved would stay loaded with no record for
-        // a later select or stop to unload it. Without one, the previous
-        // group is still recorded and nothing is left behind.
-        let error = if group.is_empty() {
-            error
-        } else {
-            roll_back(error, Some(&previous), &group, runner)
-        };
+        // a later select or stop to unload it.
+        let error = roll_back(error, Some(&previous), &group, runner);
         // The save fails after the file was replaced when only syncing its
         // directory fails. The file then no longer records the previous
         // group, which is still loaded: record the previous state again.
@@ -604,12 +608,10 @@ pub fn select(
         }
         return Err(error);
     }
-    if let Err(error) = remove_group(&recorded, runner) {
-        let error = if group.is_empty() {
-            error
-        } else {
-            roll_back(error, Some(&previous), &group, runner)
-        };
+    if !group.is_empty()
+        && let Err(error) = remove_group(&recorded, runner)
+    {
+        let error = roll_back(error, Some(&previous), &group, runner);
         // The previous group may still be loaded: record it again so that a
         // later select or stop can remove it.
         return Err(match write_state(path, &recorded) {
@@ -1011,6 +1013,72 @@ mod tests {
         assert_eq!(calls[6], ["pactl", "set-default-sink", previous]);
         assert_eq!(calls[calls.len() - 2..], unloaded);
         assert_eq!(Value::Object(read_state(&path)), old);
+    }
+
+    /// Answers like `Script` and keeps the state file as it was when the
+    /// module listing that starts a group's removal ran.
+    struct Watch<'a> {
+        script: Script,
+        path: &'a Path,
+        at_listing: Option<State>,
+    }
+
+    impl Runner for Watch<'_> {
+        fn run(&mut self, argv: &[&str]) -> Result<crate::run::Completed, String> {
+            if argv == ["pactl", "list", "modules", "short"] {
+                self.at_listing = Some(read_state(self.path));
+            }
+            self.script.run(argv)
+        }
+    }
+
+    /// The helper can be stopped while it removes the previous group (the
+    /// shell exits or reloads). Until that group is unloaded, the state file
+    /// must still record it, or no later select or stop can remove it.
+    #[test]
+    fn the_previous_group_stays_recorded_until_it_is_removed() {
+        let sinks = json!([{"index": 1, "name": "raop_sink.a"}, {"index": 3, "name": "local"}]);
+        let old = json!({
+            "groupModuleId": 40,
+            "groupName": "foamy_airplay_group_7",
+            "selectedNames": ["raop_sink.a", "raop_sink.b"],
+        });
+        for (names, local, target) in [
+            (vec!["raop_sink.a".to_string()], "", "raop_sink.a"),
+            (vec![], "local", "local"),
+        ] {
+            let dir = Dir::new();
+            let path = dir.0.join("s.json");
+            std::fs::write(&path, old.to_string()).unwrap();
+            let script = Script::new()
+                .ok(&sinks.to_string())
+                .ok("foamy_airplay_group_7")
+                .ok("")
+                .ok(target)
+                .ok("[]")
+                .ok("40\tmodule-combine-sink\tsink_name=foamy_airplay_group_7 sinks=raop_sink.a\n")
+                .ok("");
+            let mut runner = Watch {
+                script,
+                path: &path,
+                at_listing: None,
+            };
+            let (reply, code) = select(&names, local, &mut runner, &path).unwrap();
+            assert_eq!((code, reply["target"].as_str()), (0, Some(target)));
+            assert!(runner.script.answers.is_empty(), "{target}: unused answers");
+            assert_eq!(
+                runner.script.calls.last().unwrap(),
+                &["pactl", "unload-module", "40"]
+            );
+            assert_eq!(
+                runner.at_listing.map(Value::Object),
+                Some(old.clone()),
+                "{target}: the previous group was not recorded during its removal"
+            );
+            let saved = read_state(&path);
+            assert_eq!(saved.get("groupModuleId"), None, "{target}");
+            assert_eq!(saved["selectedNames"], json!(names), "{target}");
+        }
     }
 
     #[test]
