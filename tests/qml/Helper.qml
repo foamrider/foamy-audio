@@ -208,7 +208,8 @@ ShellRoot {
     }, "error", speakerGone)
   }
 
-  // d. Replies to a choice: a refusal, a local output, invalid data.
+  // d. Replies to a choice: a refusal, a local output, invalid data, a
+  // failure after the output changed.
   function choose(kind, node, state, then) {
     panel.activate(kind, node)
     until(function () {
@@ -232,6 +233,19 @@ ShellRoot {
   function garbage() {
     eq(service.airplayError, "AirPlay helper returned invalid data", "a reply that is not JSON")
     translated(service.airplayError, "the invalid-data text")
+    panel.activate("wireless", {
+      name: "raop_sink.half"
+    })
+    // The choice before ended in an error too: wait for this one's text.
+    until(function () {
+      return !shell.service.airplaySelecting && shell.service.airplayError === shell.changedText
+    }, 10000, outputChanged, "the wireless choice raop_sink.half ends in its error")
+  }
+  // tests/runtime.py checks that the reply's details reach the log.
+  readonly property string changedText: "Output changed, but an earlier AirPlay group could not be removed."
+  function outputChanged() {
+    eq(service.airplayScanState, "error", "a choice that failed after the output changed is an error")
+    translated(service.airplayError, "the text after the output changed")
     panel.close()
     until(function () {
       return !shell.service.wanted && !shell.service.airplayBusy && !shell.service.airplayDiscoveryActive && shell.service.airplayScanState === "idle"

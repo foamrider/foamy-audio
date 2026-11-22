@@ -678,6 +678,9 @@ Singleton {
       if (code !== 0 || payload.ok !== true) {
         root.airplayError = String(payload.error || "Could not change output.")
         root.airplayScanState = "error"
+        // The shown text is a fixed catalog text; its cause goes to the log.
+        if (typeof payload.details === "string" && payload.details !== "")
+          console.warn("Foamy Audio AirPlay:", payload.details)
         return
       }
       root.selectedAirplayNames = payload.selectedNames || []
