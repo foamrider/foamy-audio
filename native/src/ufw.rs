@@ -671,13 +671,6 @@ fn error_message(action: &str) -> &'static str {
 }
 
 pub fn main(args: Vec<OsString>) -> ExitCode {
-    if args.iter().any(|arg| {
-        arg.to_str()
-            .is_some_and(|arg| arg == "-h" || arg == "--help")
-    }) {
-        println!("{USAGE}");
-        return ExitCode::SUCCESS;
-    }
     let action = args
         .iter()
         .find_map(|arg| {
@@ -687,8 +680,15 @@ pub fn main(args: Vec<OsString>) -> ExitCode {
         .unwrap_or("")
         .to_string();
     let message = error_message(&action);
+    // `-h`/`--help` counts only where an option can stand, never as the
+    // value of `--peer` or after `--`.
+    let parsed = py::parse(args, &["--peer"], &["--legacy"]);
+    if parsed.as_ref().is_ok_and(|args| args.help) {
+        println!("{USAGE}");
+        return ExitCode::SUCCESS;
+    }
     json::run(
-        move || match dispatch(args) {
+        move || match dispatch(parsed) {
             (reply, 0) => Ok(reply),
             (reply, code) => Err(Failure::coded(REPLY, reply.to_string()).with_exit_code(code)),
         },
@@ -703,8 +703,8 @@ pub fn main(args: Vec<OsString>) -> ExitCode {
     )
 }
 
-fn dispatch(args: Vec<OsString>) -> (Value, u8) {
-    let args = match py::parse(args, &["--peer"], &["--legacy"]) {
+fn dispatch(parsed: Result<py::Args, py::Usage>) -> (Value, u8) {
+    let args = match parsed {
         Ok(args) => args,
         Err(py::Usage(detail)) => return usage(&detail),
     };

@@ -265,12 +265,15 @@ case "$1 $2" in
     echo '{"ok":true,"error":"","moduleId":7,"owned":true,"peers":[{"name":"Kitchen","address":"192.0.2.39"},{"name":"Hall","address":"192.0.2.40"}]}' ;;
   "airplay stop") echo '{"ok":true,"error":"","restoreName":""}' ;;
   "airplay select")
-    case "$3" in
+    # Speakers follow "--"; the local output follows --local-name.
+    name=$3
+    [ "$3" = -- ] && name=$4
+    case "$name" in
       raop_sink.gone) echo '{"ok":false,"error":"An AirPlay speaker is no longer available. Reopen the panel."}'; exit 1 ;;
       raop_sink.garbage) echo oops ;;
       --local-name) echo "{\\"ok\\":true,\\"error\\":\\"\\",\\"selectedNames\\":[],\\"target\\":\\"$4\\"}" ;;
       raop_sink.kitchen) hold select || held select; echo '{"ok":true,"error":"","selectedNames":["raop_sink.kitchen"],"target":"raop_sink.kitchen"}' ;;
-      *) echo "{\\"ok\\":true,\\"error\\":\\"\\",\\"selectedNames\\":[\\"$3\\"],\\"target\\":\\"$3\\"}" ;;
+      *) echo "{\\"ok\\":true,\\"error\\":\\"\\",\\"selectedNames\\":[\\"$name\\"],\\"target\\":\\"$name\\"}" ;;
     esac ;;
   "ufw verify") hold verify || held verify; echo '{"state":"wide","message":"m","details":"d","legacy":true}' ;;
   "ufw remove")
@@ -295,14 +298,14 @@ HELPER_CALLS = [
     START,
     STOP,
     START,
-    "airplay|select|raop_sink.kitchen",
+    "airplay|select|--|raop_sink.kitchen",
     "ufw|verify|" + PEERS,
     "ufw|remove|--legacy",
     "ufw|remove",
     "ufw|open|" + PEERS,
-    "airplay|select|raop_sink.gone",
+    "airplay|select|--|raop_sink.gone",
     "airplay|select|--local-name|alsa_output.usb",
-    "airplay|select|raop_sink.garbage",
+    "airplay|select|--|raop_sink.garbage",
     STOP,
     START,
     STOP,

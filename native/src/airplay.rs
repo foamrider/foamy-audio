@@ -31,15 +31,15 @@ const USAGE: &str = "usage: foamy-audio-helper airplay {start,stop,status,select
 const REPLY: &str = "REPLY";
 
 pub fn main(args: Vec<OsString>) -> ExitCode {
-    if args.iter().any(|arg| {
-        arg.to_str()
-            .is_some_and(|arg| arg == "-h" || arg == "--help")
-    }) {
+    let request = parse(args);
+    if request.as_ref().is_ok_and(|(_, args)| args.help) {
         println!("{USAGE}");
         return ExitCode::SUCCESS;
     }
     json::run(
-        move || match dispatch(args) {
+        move || match request
+            .map_or_else(|usage| usage, |(command, args)| dispatch(&command, &args))
+        {
             (reply, 0) => Ok(reply),
             (reply, code) => Err(Failure::coded(REPLY, reply.to_string()).with_exit_code(code)),
         },
@@ -62,57 +62,68 @@ fn failed(detail: &str) -> Value {
     json!({"ok": false, "error": format!("AirPlay helper failed: {detail}")})
 }
 
-fn dispatch(args: Vec<OsString>) -> Outcome {
+/// The command and its arguments, or the usage error reply. `-h`/`--help`
+/// counts only where an option or the command can stand, never as the value
+/// of an option or after `--`.
+fn parse(args: Vec<OsString>) -> Result<(String, py::Args), Outcome> {
     let mut args = args.into_iter();
-    let command = args.next().and_then(|arg| arg.into_string().ok());
+    let command = args
+        .next()
+        .and_then(|arg| arg.into_string().ok())
+        .unwrap_or_default();
     let rest: Vec<OsString> = args.collect();
-    let parsed = match command.as_deref() {
-        Some("start" | "stop") => py::parse(
+    let parsed = match command.as_str() {
+        "-h" | "--help" => {
+            let mut help = py::Args::default();
+            help.help = true;
+            Ok(help)
+        }
+        "start" | "stop" => py::parse(
             rest,
             &["--restore-id", "--restore-name"],
             &["--skip-restore"],
         )
         .and_then(|args| {
-            if command.as_deref() == Some("start") && args.flag("--skip-restore") {
+            if command == "start" && args.flag("--skip-restore") {
                 Err(py::Usage("unrecognized arguments: --skip-restore".into()))
             } else {
                 Ok(args)
             }
         }),
-        Some("status") => py::parse(rest, &[], &[]),
-        Some("select") => py::parse(rest, &["--local-name"], &[]),
+        "status" => py::parse(rest, &[], &[]),
+        "select" => py::parse(rest, &["--local-name"], &[]),
         _ => Err(py::Usage("argument command: invalid choice".into())),
     };
-    let args = match parsed {
-        Ok(args) if command.as_deref() != Some("select") && !args.positional.is_empty() => {
-            return usage(&format!(
-                "unrecognized arguments: {}",
-                args.positional.join(" ")
-            ));
-        }
-        Ok(args) => args,
-        Err(py::Usage(message)) => return usage(&message),
-    };
+    match parsed {
+        Ok(args) if !args.help && command != "select" && !args.positional.is_empty() => Err(usage(
+            &format!("unrecognized arguments: {}", args.positional.join(" ")),
+        )),
+        Ok(args) => Ok((command, args)),
+        Err(py::Usage(message)) => Err(usage(&message)),
+    }
+}
+
+fn dispatch(command: &str, args: &py::Args) -> Outcome {
     let mut runner = System {
         timeout: TIMEOUT,
         c_locale: false,
     };
     let path = state_path();
-    let outcome = match command.as_deref() {
-        Some("start") => start(
+    let outcome = match command {
+        "start" => start(
             args.value("--restore-id").unwrap_or(""),
             args.value("--restore-name").unwrap_or(""),
             &mut runner,
             &path,
             Path::new(MODULE_PATH),
         ),
-        Some("stop") => stop(
+        "stop" => stop(
             args.value("--restore-name").unwrap_or(""),
             args.flag("--skip-restore"),
             &mut runner,
             &path,
         ),
-        Some("select") => select(
+        "select" => select(
             &args.positional,
             args.value("--local-name").unwrap_or(""),
             &mut runner,
@@ -448,6 +459,27 @@ fn group_member_name_ok(name: &str) -> bool {
         .any(|c| c.is_whitespace() || c.is_control() || matches!(c, ',' | '"' | '\'' | '\\'))
 }
 
+/// Undoes a select that failed after it began: routes back to `previous`
+/// when routing began, then removes the new `group` (none when empty). Apps
+/// go back first so they never target a dead sink. A failing route back's
+/// error, then a failing removal's, replaces `error`.
+fn roll_back(
+    mut error: String,
+    previous: Option<&str>,
+    group: &State,
+    runner: &mut dyn Runner,
+) -> String {
+    if let Some(previous) = previous
+        && let Err(rollback) = route(previous, runner)
+    {
+        error = rollback;
+    }
+    if let Err(cleanup) = remove_group(group, runner) {
+        error = cleanup;
+    }
+    error
+}
+
 fn refuse(message: &str) -> Result<Outcome, String> {
     Ok((json!({"ok": false, "error": message}), 1))
 }
@@ -526,33 +558,40 @@ pub fn select(
         group.insert("groupName".into(), group_name.clone().into());
         target = group_name;
     }
-    let previous = checked(runner, &["pactl", "get-default-sink"])?;
+    let previous = match checked(runner, &["pactl", "get-default-sink"]) {
+        Ok(previous) => previous,
+        // Nothing was routed yet: only the new group goes.
+        Err(error) => return Err(roll_back(error, None, &group, runner)),
+    };
     if let Err(error) = route(&target, runner) {
-        // Roll back before removing a new group so apps never target a dead sink.
-        let mut error = error;
-        if let Err(rollback) = route(&previous, runner) {
-            error = rollback;
-        }
-        if let Err(cleanup) = remove_group(&group, runner) {
-            error = cleanup;
-        }
-        return Err(error);
+        return Err(roll_back(error, Some(&previous), &group, runner));
     }
-    remove_group(&state, runner)?;
-    state.remove("groupModuleId");
-    state.remove("groupName");
-    state.extend(group);
-    state.insert("selectedNames".into(), json!(names));
-    if !local_name.is_empty() {
-        state.insert("restoreName".into(), local_name.into());
-        let index = sinks
-            .iter()
-            .find(|sink| sink.get("name").and_then(Value::as_str) == Some(local_name))
-            .and_then(|sink| sink.get("index"))
-            .ok_or("invalid sink list: the local output has no index")?;
-        state.insert("restoreId".into(), py::str_of(index).into());
+    let saved = remove_group(&state, runner).and_then(|()| {
+        state.remove("groupModuleId");
+        state.remove("groupName");
+        state.extend(group.clone());
+        state.insert("selectedNames".into(), json!(names));
+        if !local_name.is_empty() {
+            state.insert("restoreName".into(), local_name.into());
+            let index = sinks
+                .iter()
+                .find(|sink| sink.get("name").and_then(Value::as_str) == Some(local_name))
+                .and_then(|sink| sink.get("index"))
+                .ok_or("invalid sink list: the local output has no index")?;
+            state.insert("restoreId".into(), py::str_of(index).into());
+        }
+        write_state(path, &state)
+    });
+    if let Err(error) = saved {
+        // A new group that is not saved would stay loaded with no record for
+        // a later select or stop to unload it. Without one, the previous
+        // group is still recorded and nothing is left behind.
+        return Err(if group.is_empty() {
+            error
+        } else {
+            roll_back(error, Some(&previous), &group, runner)
+        });
     }
-    write_state(path, &state)?;
     Ok((
         json!({"ok": true, "error": "", "selectedNames": names, "target": target}),
         0,
@@ -856,6 +895,78 @@ mod tests {
         .unwrap_err();
         assert_eq!(error, "third");
         assert_eq!(runner.calls[5], ["pactl", "list", "modules", "short"]);
+    }
+
+    /// A failure after the group module loaded unloads it again: once the
+    /// select returns, nothing else knows its id.
+    #[test]
+    fn every_failure_after_the_group_loads_removes_the_group() {
+        let group = format!("{GROUP_PREFIX}{}", std::process::id());
+        let sinks =
+            json!([{"index": 1, "name": "raop_sink.a"}, {"index": 2, "name": "raop_sink.b"}]);
+        // Loads the group, answers `after` in order, then lists the group for
+        // its removal: the error and the calls.
+        let select_with = |after: Script, path: &Path| {
+            let mut runner = Script::new().ok(&sinks.to_string()).ok("77\n");
+            runner.answers.extend(after.answers);
+            let mut runner = runner
+                .ok(&format!(
+                    "77\tmodule-combine-sink\tsink_name={group} sinks=raop_sink.a\n"
+                ))
+                .ok("");
+            let error = select(
+                &["raop_sink.a".into(), "raop_sink.b".into()],
+                "",
+                &mut runner,
+                path,
+            )
+            .unwrap_err();
+            assert!(runner.answers.is_empty(), "unused answers");
+            (error, runner.calls)
+        };
+        let routed = |after: Script| after.ok("local").ok("").ok(&group).ok("[]");
+        let back = |after: Script| after.ok("").ok("local").ok("[]");
+        let set_local = ["pactl", "set-default-sink", "local"];
+        let unloaded = [
+            vec!["pactl", "list", "modules", "short"],
+            vec!["pactl", "unload-module", "77"],
+        ];
+
+        // The previous output can't be read: nothing was routed yet.
+        let dir = Dir::new();
+        let path = dir.0.join("s.json");
+        let (error, calls) = select_with(Script::new().fail(1, "no server\n"), &path);
+        assert_eq!(error, "no server");
+        assert_eq!(
+            calls[2..],
+            [
+                vec!["pactl", "get-default-sink"],
+                unloaded[0].clone(),
+                unloaded[1].clone()
+            ]
+        );
+        assert!(!path.exists());
+
+        // The previous group can't be removed: apps go back, and the previous
+        // group stays recorded.
+        let dir = Dir::new();
+        let path = dir.0.join("s.json");
+        let old = json!({"groupModuleId": 40, "groupName": "foamy_airplay_group_7"});
+        std::fs::write(&path, old.to_string()).unwrap();
+        let (error, calls) = select_with(back(routed(Script::new()).fail(1, "busy\n")), &path);
+        assert_eq!(error, "busy");
+        assert_eq!(calls[6], ["pactl", "list", "modules", "short"]);
+        assert_eq!(calls[7], set_local);
+        assert_eq!(calls[calls.len() - 2..], unloaded);
+        assert_eq!(Value::Object(read_state(&path)), old);
+
+        // The state can't be written (its parent is a file).
+        let dir = Dir::new();
+        std::fs::write(dir.0.join("file"), b"").unwrap();
+        let path = dir.0.join("file").join("s.json");
+        let (_, calls) = select_with(back(routed(Script::new())), &path);
+        assert_eq!(calls[6], set_local);
+        assert_eq!(calls[calls.len() - 2..], unloaded);
     }
 
     #[test]

@@ -12,8 +12,10 @@
 //! ```
 //!
 //! Options take `--name value` or `--name=value`, may repeat (the last
-//! wins; `--peer` collects), `--` ends them and `-h`/`--help` prints usage
-//! (exit 0). Anything else that starts with `-`, a missing or extra argument
+//! wins; `--peer` collects), `--` ends them and `-h`/`--help` in an option's
+//! place (or the command's, for `airplay`) prints usage (exit 0); as an
+//! option's value or after `--` it is a value like any other. Anything else
+//! that starts with `-`, a missing or extra argument
 //! or a non-UTF-8 argument is a usage error, exit 2: `airplay` and `ufw` then
 //! still print their JSON error reply (see below), `microphone-peak` prints
 //! usage on stderr. (Python's argparse printed usage on stderr and nothing on
@@ -86,6 +88,10 @@
 //!   on success remove the
 //!   previous group and save `groupModuleId`/`groupName` (or drop them) and
 //!   `selectedNames`. Reply `{"ok":true,"error":"","selectedNames","target"}`.
+//!   Once its id is read, a new group is never left loaded unrecorded: when
+//!   reading the previous output, removing the previous group or saving the
+//!   state fails, it is removed again the same way (routing back first once
+//!   routing began).
 //! - Routing to a sink: `pactl set-default-sink <sink>`, then up to 20 times
 //!   `pactl get-default-sink` 100 ms apart until it answers the sink (else
 //!   "The selected output did not become the default"), then `pactl -f

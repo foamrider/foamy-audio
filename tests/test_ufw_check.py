@@ -157,6 +157,27 @@ class UfwTest(unittest.TestCase):
             self.assertEqual(payload["details"], f"'{peer}' does not appear to be an IPv4 or IPv6 address")
         result = self.ufw("remove", "--peer", "nope")
         self.assertEqual(reply(result)["message"], "Could not remove UFW rules.")
+        # The help option's spelling as a value is a value, not a request for the usage.
+        for peer in ("-h", "--help"):
+            result = self.ufw("verify", "--peer", peer)
+            self.assertEqual(result.returncode, 1, peer)
+            self.assertEqual(
+                reply(result),
+                {
+                    "state": "error",
+                    "message": "Could not complete the UFW check.",
+                    "details": f"'{peer}' does not appear to be an IPv4 or IPv6 address",
+                },
+            )
+        self.assertEqual(self.fakes.calls(), [])
+
+    def test_help_prints_the_usage_only_in_an_option_position(self):
+        for args in (("-h",), ("--help",), ("verify", "--help"), ("open", "--peer", "192.0.2.39", "-h")):
+            result = self.ufw(*args)
+            self.assertEqual(result.returncode, 0, args)
+            self.assertEqual(
+                result.stdout, "usage: foamy-audio-helper ufw {verify,open,remove} [--peer PEER] [--legacy]\n", args
+            )
         self.assertEqual(self.fakes.calls(), [])
 
     # ---- open and remove ---------------------------------------------------
