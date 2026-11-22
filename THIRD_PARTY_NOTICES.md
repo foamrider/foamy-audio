@@ -12,9 +12,9 @@ How the lists are made:
 
 ## `foamy-audio-helper`
 
-- `bin/aarch64/foamy-audio-helper`: sha256 `536934171c1a14a9705f1e2f99119b6e58670c0942a5b84334fad75c27119fe7`
-- `bin/x86_64/foamy-audio-helper`: sha256 `92649d823fc26927e8770bedfb98697bd95af18a1fa89928c95adb32aa949d05`
-- `native/native.pin`: source `cdb2f0e1fc09321cdda4b807ef00ea978b53b7aa7314cb43e927a3edddc99be7`, toolchain 1.99.1
+- `bin/aarch64/foamy-audio-helper`: sha256 `8b786ccf9892df5c72e9aa81fffd5a5e0910190a0af81c8565b38e359462b3b9`
+- `bin/x86_64/foamy-audio-helper`: sha256 `c6a0e3de3d9f23b1c38eac4b2fe6c357b7b452615d311839e9cd2eb56d75dd0c`
+- `native/native.pin`: source `08fa8ef29484db7779bc6d664829bb3a1f1433d39d46834d443d78ff99357ca0`, toolchain 1.99.1
 
 ### Crates linked into `foamy-audio-helper`
 

@@ -566,7 +566,10 @@ pub fn select(
     if let Err(error) = route(&target, runner) {
         return Err(roll_back(error, Some(&previous), &group, runner));
     }
-    let saved = remove_group(&state, runner).and_then(|()| {
+    let recorded = state.clone();
+    // The new state is saved before the previous group goes: a failed save
+    // then still finds that group loaded, so routing back to it works.
+    let saved = (|| {
         state.remove("groupModuleId");
         state.remove("groupName");
         state.extend(group.clone());
@@ -581,7 +584,7 @@ pub fn select(
             state.insert("restoreId".into(), py::str_of(index).into());
         }
         write_state(path, &state)
-    });
+    })();
     if let Err(error) = saved {
         // A new group that is not saved would stay loaded with no record for
         // a later select or stop to unload it. Without one, the previous
@@ -590,6 +593,19 @@ pub fn select(
             error
         } else {
             roll_back(error, Some(&previous), &group, runner)
+        });
+    }
+    if let Err(error) = remove_group(&recorded, runner) {
+        let error = if group.is_empty() {
+            error
+        } else {
+            roll_back(error, Some(&previous), &group, runner)
+        };
+        // The previous group may still be loaded: record it again so that a
+        // later select or stop can remove it.
+        return Err(match write_state(path, &recorded) {
+            Ok(()) => error,
+            Err(rewrite) => rewrite,
         });
     }
     Ok((
@@ -752,6 +768,7 @@ pub fn status(runner: &mut dyn Runner, path: &Path) -> Result<Outcome, String> {
 mod tests {
     use super::*;
     use crate::run::tests::Script;
+    use std::os::unix::fs::PermissionsExt;
     use std::sync::atomic::{AtomicU32, Ordering};
 
     struct Dir(PathBuf);
@@ -771,6 +788,8 @@ mod tests {
 
     impl Drop for Dir {
         fn drop(&mut self) {
+            // A test may make the directory read-only so that writes fail.
+            let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o700));
             let _ = std::fs::remove_dir_all(&self.0);
         }
     }
@@ -967,6 +986,22 @@ mod tests {
         let (_, calls) = select_with(back(routed(Script::new())), &path);
         assert_eq!(calls[6], set_local);
         assert_eq!(calls[calls.len() - 2..], unloaded);
+
+        // The state can't be saved after the new group took over from a
+        // recorded group that was the default: that group is still loaded, so
+        // apps go back to it and it stays recorded.
+        let dir = Dir::new();
+        let path = dir.0.join("s.json");
+        std::fs::write(&path, old.to_string()).unwrap();
+        std::fs::set_permissions(&dir.0, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let previous = "foamy_airplay_group_7";
+        let script = Script::new().ok(previous).ok("").ok(&group).ok("[]");
+        let (error, calls) = select_with(script.ok("").ok(previous).ok("[]"), &path);
+        assert!(error.contains("Permission denied"), "{error}");
+        assert_eq!(calls.len(), 11);
+        assert_eq!(calls[6], ["pactl", "set-default-sink", previous]);
+        assert_eq!(calls[calls.len() - 2..], unloaded);
+        assert_eq!(Value::Object(read_state(&path)), old);
     }
 
     #[test]

@@ -13,8 +13,10 @@
 //!
 //! Options take `--name value` or `--name=value`, may repeat (the last
 //! wins; `--peer` collects), `--` ends them and `-h`/`--help` in an option's
-//! place (or the command's, for `airplay`) prints usage (exit 0); as an
-//! option's value or after `--` it is a value like any other. Anything else
+//! place (or the command's, for `airplay`) prints usage (exit 0); in an
+//! option's place only when the other arguments parse, else it is the usage
+//! error below. As an option's value or after `--` it is a value like any
+//! other. Anything else
 //! that starts with `-`, a missing or extra argument
 //! or a non-UTF-8 argument is a usage error, exit 2: `airplay` and `ufw` then
 //! still print their JSON error reply (see below), `microphone-peak` prints
@@ -85,13 +87,17 @@
 //!   output, remove the new group and report the failure (as in Python, a
 //!   failing rollback's error, then a failing cleanup's, replaces it; any
 //!   failure rolls back, where Python skipped it for malformed pactl JSON);
-//!   on success remove the
-//!   previous group and save `groupModuleId`/`groupName` (or drop them) and
-//!   `selectedNames`. Reply `{"ok":true,"error":"","selectedNames","target"}`.
-//!   Once its id is read, a new group is never left loaded unrecorded: when
-//!   reading the previous output, removing the previous group or saving the
-//!   state fails, it is removed again the same way (routing back first once
-//!   routing began).
+//!   on success save `groupModuleId`/`groupName` (or drop them) and
+//!   `selectedNames`, then remove the previous group. Reply
+//!   `{"ok":true,"error":"","selectedNames","target"}`.
+//!   Once its id is read, a new group is not left behind: when reading the
+//!   previous output, saving the state or removing the previous group fails,
+//!   it is removed again the same way (routing back first once routing
+//!   began; this cleanup can fail too, then the group stays loaded with no
+//!   record). When removing the previous group fails, the previous state is
+//!   written back so that group stays recorded (a failing write's error then
+//!   replaces the reply's). Without a new group, a failed save or removal
+//!   leaves the new route in place.
 //! - Routing to a sink: `pactl set-default-sink <sink>`, then up to 20 times
 //!   `pactl get-default-sink` 100 ms apart until it answers the sink (else
 //!   "The selected output did not become the default"), then `pactl -f
