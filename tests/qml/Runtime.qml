@@ -283,12 +283,11 @@ ShellRoot {
     var header = wireless.height
     shell.key(view, "w")
     eq(view.wirelessExpanded, true, "w unfolds Wireless")
-    // The header row at least: the section's last pixels can stay below the
-    // fold, because FoamyWheelScroll refollows the growing section before
-    // the Flickable's contentHeight has grown.
+    // The whole unfolded section. It must be taller than its header, so a
+    // poll before the section's layout cannot pass on the header row alone.
     wait.waitFor(function () {
       var y = shell.top(flick, wireless)
-      return first.displayAudioSources.length === 40 && flick.contentY > 0 && y >= flick.contentY - 1 && y + header <= flick.contentY + flick.height + 1
+      return first.displayAudioSources.length === 40 && flick.contentY > 0 && wireless.height > header && y >= flick.contentY - 1 && y + wireless.height <= flick.contentY + flick.height + 1
     }, 5000, stepTwoSettings, "unfolding scrolls Wireless into view")
   }
 
