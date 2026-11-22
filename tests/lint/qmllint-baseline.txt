@@ -1,7 +1,6 @@
 # qmllint findings accepted when the check was adopted. tests/validate.sh fails on any
 # finding not listed here. Regenerate with `tests/validate.sh --update-baseline qmllint`
 # only to drop fixed entries or after reviewing every added one; never to pass a check.
-AudioRow.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: FoamyStyle.font.body
 AudioRow.qml: missing-property: Member "text" not found on type "QObject" | borderSpec: Commons.Border.controlSpec(root.selected ? "selected" : "normal", Commons.Color.popups.text, Commons.Color.accent)
 AudioRow.qml: missing-property: Member "text" not found on type "QObject" | color: Commons.Style.selectedStateColor(Commons.Color.popups.text, Commons.Color.accent)
 AudioRow.qml: missing-property: Member "text" not found on type "QObject" | color: Qt.alpha(Commons.Color.popups.text, 0.18)
@@ -30,12 +29,6 @@ AudioView.qml: block-scope-var-declaration: var declaration in block scope is ho
 AudioView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var row = cursorRow()
 AudioView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var row = cursorRow()
 AudioView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var row = cursorRow()
-AudioView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
-AudioView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
-AudioView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
-AudioView.qml: missing-property: Member "display" not found on type "QObject" | font.pixelSize: FoamyStyle.font.display
-AudioView.qml: missing-property: Member "numeral" not found on type "QObject" | font.pixelSize: FoamyStyle.font.numeral
-DeviceVolume.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
 Panel.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < candidates.length; i++) {
 Panel.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < peers.length; i++)
 Panel.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var entry = DesktopEntries.byId(name) || DesktopEntries.heuristicLookup(name)
@@ -50,7 +43,6 @@ Panel.qml: missing-property: Member "iconSlot" not found on type "QObject" | fix
 Panel.qml: missing-property: Member "iconSlot" not found on type "QObject" | fixedWidth: root.vertical ? -1 : Math.max(Style.bar.iconSlot, barContent.implicitWidth + Style.bar.iconSlot - Style.bar.iconCanvas)
 Panel.qml: missing-property: Member "position" not found on type "QObject" | readonly property bool vertical: bar && (bar.position === "left" || bar.position === "right")
 Panel.qml: missing-property: Member "position" not found on type "QObject" | readonly property bool vertical: bar && (bar.position === "left" || bar.position === "right")
-SectionHeader.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
 preview/Before.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < kids.length; i++) {
 preview/Before.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var child = kids[i]
 preview/Before.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var deeper = findPopup(child, depth + 1)
