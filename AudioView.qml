@@ -20,7 +20,6 @@ PanelKeyCatcher {
   required property var audio
 
   readonly property bool editing: audio.editingSettings === true
-  readonly property bool rtl: FoamyI18n.rightToLeft
   readonly property real step: audio.volumeStep || 0.05
 
   property bool outputExpanded: true
@@ -200,8 +199,9 @@ PanelKeyCatcher {
         cursor.index = stops.indexOf("volume")
         return
       }
-      // The header row and every slider mirror in RTL, so visual direction wins.
-      adjust(rtl ? -dx : dx)
+      // The host's key catcher already gives dx in reading order in a
+      // mirrored panel, and the header row and every slider mirror with it.
+      adjust(dx)
     }
   }
   onActivateRequested: activateStop()
