@@ -723,6 +723,45 @@ class AirPlayBridgeTest(unittest.TestCase):
         self.assertEqual(self.saved()["restoreName"], "alsa_output.creative")
 
     @needs_namespace(RAOP_DIR)
+    def test_a_scan_that_cannot_run_leaves_the_loaded_module_to_the_next_stop(self):
+        # avahi-browse is optional, and it can also time out: the start fails
+        # after it loaded discovery, and only the state file tells a later
+        # stop that the module is this plugin's to unload.
+        self.fakes.bind_raop(installed=True)
+        os.unlink(self.fakes.bin / "avahi-browse")
+        self.fakes.queue("pactl", "", "536870916\n")
+        result = self.run_bridge("start", "--restore-id", "62", "--restore-name", "alsa_output.creative")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("avahi-browse", reply(result)["error"])
+        self.fakes.queue("pactl", "536870916\tmodule-raop-discover\n", "")
+        result = self.run_bridge("stop", "--skip-restore")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(
+            self.fakes.argvs()[2:],
+            [MODULES, ["pactl", "unload-module", "536870916"]],
+            "the next stop did not unload the discovery module the failed start loaded",
+        )
+        self.assertFalse(self.state.exists())
+        self.assertNothingLeft()
+
+    @needs_namespace(RAOP_DIR)
+    def test_a_start_that_cannot_save_its_session_unloads_the_module_again(self):
+        # Without a record no later stop would unload it.
+        self.fakes.bind_raop(installed=True)
+        blocked = self.fakes.root / "a-file"
+        blocked.write_text("")
+        self.fakes.queue("pactl", "", "536870916\n", "")
+        result = self.run_bridge("start", env={"FOAMY_AUDIO_AIRPLAY_STATE": str(blocked / "state.json")})
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertTrue(reply(result)["error"].startswith("AirPlay helper failed: cannot create "), result.stdout)
+        self.assertEqual(
+            self.fakes.argvs(),
+            [MODULES, ["pactl", "load-module", "module-raop-discover"], ["pactl", "unload-module", "536870916"]],
+            "a discovery module that could not be recorded stayed loaded",
+        )
+        self.assertNothingLeft()
+
+    @needs_namespace(RAOP_DIR)
     def test_failed_module_load_passes_on_pactl_status(self):
         self.fakes.bind_raop(installed=True)
         self.fakes.queue("pactl", "", {"stderr": "Failure: Module initialization failed\n", "code": 3})

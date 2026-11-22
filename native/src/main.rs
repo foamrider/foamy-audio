@@ -41,8 +41,12 @@
 //!   unloaded by us), else, when
 //!   `/usr/lib/pipewire-0.3/libpipewire-module-raop-discover.so` is a file,
 //!   `pactl load-module module-raop-discover` (its stdout is the id;
-//!   `owned: true`). Then `avahi-browse -rtp _raop._tcp` (a failure is no
-//!   peers). The state becomes `{moduleId, owned, restoreId, restoreName,
+//!   `owned: true`); the state below is then saved with no peers, so a scan
+//!   that cannot run, or a helper stopped during it, leaves the module to a
+//!   later `stop`. If that save fails: `pactl unload-module <id>`, and the
+//!   save's error (then `"; "` and the unload's, if it fails too). Then
+//!   `avahi-browse -rtp _raop._tcp` (a nonzero exit is no peers). The state
+//!   becomes `{moduleId, owned, restoreId, restoreName,
 //!   peers}` plus the remembered `groupModuleId`, `groupName` and
 //!   `selectedNames`; the reply is `{"ok":true,"error":"",…state}`.
 //!   `restoreId`/`restoreName`: the argument, else the remembered value,

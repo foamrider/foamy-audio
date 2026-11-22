@@ -638,12 +638,12 @@ pub fn start(
         Err(error) => return Ok((json!({"ok": false, "error": error}), 1)),
     };
     let remembered = py::integer(current.get("moduleId"));
-    let (module_id, owned) = match remembered {
+    let (module_id, owned, loaded) = match remembered {
         Some(id) if existing.contains(&id) => {
-            (id, current.get("owned") == Some(&Value::Bool(true)))
+            (id, current.get("owned") == Some(&Value::Bool(true)), false)
         }
         // Reuse a module enabled elsewhere, but never unload what this panel did not create.
-        _ if !existing.is_empty() => (existing[0], false),
+        _ if !existing.is_empty() => (existing[0], false, false),
         _ => {
             if !std::fs::metadata(module_path).is_ok_and(|meta| meta.is_file()) {
                 return Ok((
@@ -663,7 +663,7 @@ pub fn start(
                 ));
             }
             match py::int(&result.stdout).and_then(|id| i64::try_from(id).ok()) {
-                Some(id) => (id, true),
+                Some(id) => (id, true, true),
                 None => {
                     return Ok((
                         json!({"ok": false, "error": "PipeWire returned an invalid AirPlay module id"}),
@@ -673,7 +673,6 @@ pub fn start(
             }
         }
     };
-    let peers = discover(runner)?;
     let remembered_or = |argument: &str, key: &str| -> String {
         if !argument.is_empty() {
             argument.to_string()
@@ -694,12 +693,25 @@ pub fn start(
         "restoreName".into(),
         remembered_or(restore_name, "restoreName").into(),
     );
-    payload.insert("peers".into(), Value::Array(peers));
+    payload.insert("peers".into(), Value::Array(Vec::new()));
     for key in ["groupModuleId", "groupName", "selectedNames"] {
         if let Some(value) = current.get(key) {
             payload.insert(key.into(), value.clone());
         }
     }
+    // Only the state file tells a later stop that the module is ours to
+    // unload. A module this start loaded is saved before the scan, which can
+    // fail or be cut short by a stopped helper, or unloaded again if the save
+    // fails.
+    if loaded && let Err(error) = write_state(path, &payload) {
+        return Err(
+            match checked(runner, &["pactl", "unload-module", &module_id.to_string()]) {
+                Ok(_) => error,
+                Err(unload) => format!("{error}; {unload}"),
+            },
+        );
+    }
+    payload.insert("peers".into(), Value::Array(discover(runner)?));
     write_state(path, &payload)?;
     let mut reply = State::new();
     reply.insert("ok".into(), true.into());
@@ -1013,6 +1025,97 @@ mod tests {
         assert_eq!(calls[6], ["pactl", "set-default-sink", previous]);
         assert_eq!(calls[calls.len() - 2..], unloaded);
         assert_eq!(Value::Object(read_state(&path)), old);
+    }
+
+    /// Answers like `Script`. At the stream listing that ends routing (the
+    /// last call before the save) it writes `replaced` into the state file
+    /// and makes the directory read-only, and the next call makes it
+    /// writable again: the save then fails with the file already replaced.
+    struct ReplacedBeforeSave<'a> {
+        script: Script,
+        path: &'a Path,
+        replaced: Option<Value>,
+        reopen: bool,
+    }
+
+    impl Runner for ReplacedBeforeSave<'_> {
+        fn run(&mut self, argv: &[&str]) -> Result<crate::run::Completed, String> {
+            let dir = self.path.parent().unwrap();
+            if std::mem::take(&mut self.reopen) {
+                std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+            }
+            if argv == ["pactl", "-f", "json", "list", "sink-inputs"]
+                && let Some(replaced) = self.replaced.take()
+            {
+                std::fs::write(self.path, replaced.to_string()).unwrap();
+                std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o500)).unwrap();
+                self.reopen = true;
+            }
+            self.script.run(argv)
+        }
+    }
+
+    /// When only syncing the directory fails, the save has already replaced
+    /// the state file: it names the new group, which the rollback unloads,
+    /// and no longer the previous one, which is still loaded. The kit makes
+    /// that sync with raw system calls, so `ReplacedBeforeSave` leaves the
+    /// same state another way.
+    #[test]
+    fn a_save_that_replaced_the_file_and_failed_keeps_the_previous_group_recorded() {
+        let group = format!("{GROUP_PREFIX}{}", std::process::id());
+        let sinks =
+            json!([{"index": 1, "name": "raop_sink.a"}, {"index": 2, "name": "raop_sink.b"}]);
+        let old = json!({"groupModuleId": 40, "groupName": "foamy_airplay_group_7"});
+        let dir = Dir::new();
+        let path = dir.0.join("s.json");
+        std::fs::write(&path, old.to_string()).unwrap();
+        let previous = "foamy_airplay_group_7";
+        let script = Script::new()
+            .ok(&sinks.to_string())
+            .ok("77\n")
+            .ok(previous)
+            .ok("")
+            .ok(&group)
+            .ok("[]")
+            .ok("")
+            .ok(previous)
+            .ok("[]")
+            .ok(&format!(
+                "77\tmodule-combine-sink\tsink_name={group} sinks=raop_sink.a\n"
+            ))
+            .ok("");
+        let mut runner = ReplacedBeforeSave {
+            script,
+            path: &path,
+            replaced: Some(json!({
+                "groupModuleId": 77,
+                "groupName": group,
+                "selectedNames": ["raop_sink.a", "raop_sink.b"],
+            })),
+            reopen: false,
+        };
+        let error = select(
+            &["raop_sink.a".into(), "raop_sink.b".into()],
+            "",
+            &mut runner,
+            &path,
+        )
+        .unwrap_err();
+        assert!(error.contains("Permission denied"), "{error}");
+        assert!(runner.script.answers.is_empty(), "unused answers");
+        assert_eq!(
+            runner.script.calls[6],
+            ["pactl", "set-default-sink", previous]
+        );
+        assert_eq!(
+            runner.script.calls.last().unwrap(),
+            &["pactl", "unload-module", "77"]
+        );
+        assert_eq!(
+            Value::Object(read_state(&path)),
+            old,
+            "the file no longer records the previous group, which is still loaded"
+        );
     }
 
     /// Answers like `Script` and keeps the state file as it was when the
