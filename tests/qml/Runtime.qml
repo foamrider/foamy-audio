@@ -175,6 +175,15 @@ ShellRoot {
   function top(flick, item) {
     return item.mapToItem(flick.contentItem, 0, 0).y
   }
+  // The window x of the header button that has the cursor (its centre).
+  function headerCursorX(view, band) {
+    var item = view.cursorKey === "settings" ? band.settingsButton : findType(band, function (candidate) {
+      return candidate.hasCursor === true && candidate.iconName !== undefined && candidate !== band.settingsButton
+    })
+    if (!item)
+      return NaN
+    return item.mapToItem(null, item.width / 2, 0).x
+  }
   function sectionText(view, name, text) {
     return findType(view.sectionItem(name), function (item) {
       return item.text === text && item.visible && item.textFormat !== undefined
@@ -239,8 +248,20 @@ ShellRoot {
     }
     view.moveRequested(0, -1)
     eq(view.cursorKey, "settings", "up from the slider reaches the header")
-    view.moveRequested(-1, 0)
-    eq(view.cursorKey, FoamyI18n.rightToLeft ? "settings" : "inputMute", "h moves along the header in reading order")
+    // Real arrow keys through the host's key catcher, which already turns
+    // them into reading order in a mirrored panel. Settings sits at the
+    // trailing end: the right edge in LTR, the left edge in RTL.
+    var ev = Qt.createQmlObject("import QtTest; TestEvent {}", view)
+    var startX = headerCursorX(view, band)
+    ev.keyClick(Qt.Key_Left, Qt.NoModifier, -1)
+    var leftX = headerCursorX(view, band)
+    eq(view.cursorKey, FoamyI18n.rightToLeft ? "settings" : "inputMute", "Left moves the header cursor left, or stays at the left edge")
+    check(leftX <= startX, "the header cursor never moves right on Left: " + startX + " -> " + leftX)
+    ev.keyClick(Qt.Key_Right, Qt.NoModifier, -1)
+    var rightX = headerCursorX(view, band)
+    eq(view.cursorKey, FoamyI18n.rightToLeft ? "inputMute" : "settings", "Right moves the header cursor right")
+    check(rightX > leftX, "the header cursor moves right on Right: " + leftX + " -> " + rightX)
+    ev.destroy()
     shell.key(view, "o")
     eq(view.outputExpanded, false, "o folds Output")
     // Enough inputs that Wireless starts below the fold.

@@ -113,6 +113,31 @@ class AirPlayBridgeTest(unittest.TestCase):
         self.assertEqual(self.fakes.argvs(), [SINKS])
         self.assertFalse(self.state.exists())
 
+    def test_an_output_named_like_the_help_option_is_a_value(self):
+        # A rule in the user's PipeWire config can set any node.name.
+        self.fakes.queue("pactl", json.dumps([{"index": 62, "name": "-h"}]), "alsa_output.old", "", "-h", "[]")
+        result = self.run_bridge("select", "--local-name", "-h")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(reply(result), {"ok": True, "error": "", "selectedNames": [], "target": "-h"})
+        self.assertEqual(self.saved(), {"selectedNames": [], "restoreName": "-h", "restoreId": "62"})
+        self.assertNothingLeft()
+
+    def test_a_speaker_name_after_the_option_end_is_a_name(self):
+        self.fakes.queue("pactl", json.dumps([{"index": 70, "name": "raop_sink.a"}]))
+        result = self.run_bridge("select", "--", "--help")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(
+            reply(result), {"ok": False, "error": "An AirPlay speaker is no longer available. Reopen the panel."}
+        )
+        self.assertEqual(self.fakes.argvs(), [SINKS])
+
+    def test_help_prints_the_usage_only_in_an_option_position(self):
+        for args in (("-h",), ("--help",), ("select", "-h"), ("status", "--help"), ("stop", "--skip-restore", "-h")):
+            result = self.run_bridge(*args)
+            self.assertEqual(result.returncode, 0, args)
+            self.assertEqual(result.stdout, "usage: foamy-audio-helper airplay {start,stop,status,select} …\n", args)
+        self.assertEqual(self.fakes.calls(), [])
+
     def test_local_and_speakers_together_are_refused_before_any_command(self):
         result = self.run_bridge("select", "raop_sink.a", "--local-name", "alsa_output.local")
         self.assertEqual(result.returncode, 1)
@@ -368,6 +393,62 @@ class AirPlayBridgeTest(unittest.TestCase):
         self.assertFalse(self.state.exists())
         self.assertNothingLeft()
 
+    def test_a_group_whose_previous_output_cannot_be_read_is_removed_again(self):
+        sinks = [{"index": 70, "name": "raop_sink.a"}, {"index": 71, "name": "raop_sink.b"}]
+        self.fakes.queue(
+            "pactl",
+            json.dumps(sinks),
+            "88\n",
+            {"stderr": "Connection failure\n", "code": 1},
+            {"group_listing": 88},
+            "",
+        )
+        result = self.run_bridge("select", "raop_sink.a", "raop_sink.b")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(reply(result), {"ok": False, "error": "AirPlay helper failed: Connection failure"})
+        # The default never changed, so nothing routes back; the new group goes.
+        self.assertEqual(self.fakes.argvs()[2:], [GET_DEFAULT, MODULES, ["pactl", "unload-module", "88"]])
+        self.assertFalse(self.state.exists())
+        self.assertNothingLeft()
+
+    def test_a_group_is_removed_again_when_the_previous_group_cannot_be(self):
+        sinks = [{"index": 70, "name": "raop_sink.a"}, {"index": 71, "name": "raop_sink.b"}]
+        previous = {"groupModuleId": 40, "groupName": "foamy_airplay_group_7", "selectedNames": ["raop_sink.c"]}
+        self.write_state(previous)
+        self.fakes.queue(
+            "pactl",
+            json.dumps(sinks),
+            "88\n",
+            "alsa_output.local",
+            "",
+            ECHO_DEFAULT,
+            "[]",
+            {"stderr": "Failure: busy\n", "code": 1},
+            "",
+            "alsa_output.local",
+            "[]",
+            {"group_listing": 88},
+            "",
+        )
+        result = self.run_bridge("select", "raop_sink.a", "raop_sink.b")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(reply(result), {"ok": False, "error": "AirPlay helper failed: Failure: busy"})
+        # Apps go back to the previous output, then the new group is unloaded;
+        # the previous group stays recorded for the next select or stop.
+        self.assertEqual(
+            self.fakes.argvs()[6:],
+            [
+                MODULES,
+                ["pactl", "set-default-sink", "alsa_output.local"],
+                GET_DEFAULT,
+                STREAMS,
+                MODULES,
+                ["pactl", "unload-module", "88"],
+            ],
+        )
+        self.assertEqual(self.saved(), previous)
+        self.assertNothingLeft()
+
     # ---- stop and status ---------------------------------------------------
 
     def test_group_cleanup_never_unloads_reused_module_id(self):
@@ -612,6 +693,14 @@ class AirPlayBridgeTest(unittest.TestCase):
         peers = reply(self.run_bridge("start"))["peers"]
         self.assertEqual([peer["name"] for peer in peers], ["Stue"])
         self.assertEqual(peers[0]["port"], 7000)
+
+    def test_remembered_outputs_named_like_the_help_option_are_values(self):
+        self.fakes.queue("pactl", "27\tmodule-raop-discover\n")
+        self.fakes.queue("avahi-browse", "")
+        result = self.run_bridge("start", "--restore-id", "-h", "--restore-name", "--help")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = reply(result)
+        self.assertEqual((payload["restoreId"], payload["restoreName"]), ("-h", "--help"))
 
     def test_inspecting_modules_failure_is_reported(self):
         self.fakes.queue("pactl", {"code": 1})

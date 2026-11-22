@@ -628,7 +628,8 @@ Singleton {
     else
       names.splice(index, 1)
     airplayError = ""
-    airplaySelectProc.command = airplayCommand(["select"].concat(names))
+    // "--": a sink name that starts with "-" stays a name, never an option.
+    airplaySelectProc.command = airplayCommand(["select", "--"].concat(names))
     airplaySelectProc.running = true
   }
 
