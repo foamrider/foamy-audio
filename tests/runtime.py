@@ -271,7 +271,7 @@ case "$1 $2" in
     case "$name" in
       raop_sink.gone) echo '{"ok":false,"error":"An AirPlay speaker is no longer available. Reopen the panel."}'; exit 1 ;;
       raop_sink.garbage) echo oops ;;
-      raop_sink.half) echo '{"ok":false,"error":"Output changed, but an earlier AirPlay group could not be removed.","details":"CHANGED_CAUSE"}'; exit 1 ;;
+      raop_sink.half) echo '{"ok":false,"error":"Output changed, but an earlier AirPlay group could not be removed.","details":"CHANGED_CAUSE","selectedNames":["raop_sink.half"],"target":"raop_sink.half"}'; exit 1 ;;
       --local-name) echo "{\\"ok\\":true,\\"error\\":\\"\\",\\"selectedNames\\":[],\\"target\\":\\"$4\\"}" ;;
       raop_sink.kitchen) hold select || held select; echo '{"ok":true,"error":"","selectedNames":["raop_sink.kitchen"],"target":"raop_sink.kitchen"}' ;;
       *) echo "{\\"ok\\":true,\\"error\\":\\"\\",\\"selectedNames\\":[\\"$name\\"],\\"target\\":\\"$name\\"}" ;;

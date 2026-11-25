@@ -246,6 +246,7 @@ ShellRoot {
   function outputChanged() {
     eq(service.airplayScanState, "error", "a choice that failed after the output changed is an error")
     translated(service.airplayError, "the text after the output changed")
+    eq(JSON.stringify(service.selectedAirplayNames), "[\"raop_sink.half\"]", "the speakers of a choice that failed after the output changed are taken")
     panel.close()
     until(function () {
       return !shell.service.wanted && !shell.service.airplayBusy && !shell.service.airplayDiscoveryActive && shell.service.airplayScanState === "idle"
