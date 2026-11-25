@@ -34,6 +34,14 @@
 //! One compact JSON line on stdout for every outcome. Children: `pactl` and
 //! `avahi-browse`, 12 s each, with the caller's environment.
 //!
+//! Commands run one at a time, also across helpers of different shells:
+//! each holds an exclusive `flock` on
+//! `${XDG_RUNTIME_DIR:-/run/user/<uid>}/foamy-audio-airplay.lock` (created
+//! with mode 0600; a symlink, a non-regular file or another user's file is
+//! an error) from before it reads the state until it is done. The next one
+//! waits for it at most 30 s, then fails with `"AirPlay helper failed:
+//! another AirPlay command did not finish within 30 seconds"` exit 1.
+//!
 //! - `start`: `pactl list modules short`; a line whose second field is
 //!   `module-raop-discover` or `libpipewire-module-raop-discover` and whose
 //!   first is an integer is a discovery module. The remembered `moduleId` if
@@ -110,7 +118,7 @@
 //!   switch: `{"ok":false,"error":"Output changed, but the AirPlay session
 //!   could not be saved."` (the save) or `"Output changed, but an earlier
 //!   AirPlay group could not be removed."` (a removal), `"details":<the
-//!   failure>}` exit 1.
+//!   failure>,"selectedNames","target"}` (the switch that stays) exit 1.
 //! - Routing to a sink: `pactl set-default-sink <sink>`, then up to 20 times
 //!   `pactl get-default-sink` 100 ms apart until it answers the sink (else
 //!   "The selected output did not become the default"), then `pactl -f

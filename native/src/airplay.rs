@@ -5,9 +5,11 @@ use std::ffi::OsString;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use foamy_helper::lock::FileLock;
 use foamy_helper::{Failure, json};
 use serde_json::{Map, Value, json};
 
@@ -18,6 +20,10 @@ const PULSE_MODULE: &str = "module-raop-discover";
 const PIPEWIRE_MODULE: &str = "libpipewire-module-raop-discover";
 const MODULE_PATH: &str = "/usr/lib/pipewire-0.3/libpipewire-module-raop-discover.so";
 const TIMEOUT: Duration = Duration::from_secs(12);
+/// How long a command waits for the one before it. A scan holds the lock
+/// through avahi-browse (12 s at most); a command that takes longer than
+/// this is hung, and the panel must not stay busy behind it.
+const LOCK_WAIT: Duration = Duration::from_secs(30);
 /// Largest state file read; a bigger one reads as no session.
 const MAX_STATE: u64 = 1 << 20;
 const GROUP_PREFIX: &str = "foamy_airplay_group_";
@@ -109,7 +115,9 @@ fn dispatch(command: &str, args: &py::Args) -> Outcome {
         c_locale: false,
     };
     let path = state_path();
-    let outcome = match command {
+    // From the state a command reads to the state it saves and the groups it
+    // removes, no other command may run beside it.
+    let outcome = lock_session().and_then(|_lock| match command {
         "start" => start(
             args.value("--restore-id").unwrap_or(""),
             args.value("--restore-name").unwrap_or(""),
@@ -130,7 +138,7 @@ fn dispatch(command: &str, args: &py::Args) -> Outcome {
             &path,
         ),
         _ => status(&mut runner, &path),
-    };
+    });
     outcome.unwrap_or_else(|detail| (failed(&detail), 1))
 }
 
@@ -141,19 +149,40 @@ fn usage(message: &str) -> Outcome {
     )
 }
 
+fn runtime_dir() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(format!("/run/user/{}", rustix::process::getuid().as_raw()))
+        })
+}
+
 fn state_path() -> PathBuf {
     if let Some(path) =
         std::env::var_os("FOAMY_AUDIO_AIRPLAY_STATE").filter(|path| !path.is_empty())
     {
         return PathBuf::from(path);
     }
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
-        .filter(|dir| !dir.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(format!("/run/user/{}", rustix::process::getuid().as_raw()))
-        });
-    runtime.join("foamy-audio-airplay.json")
+    runtime_dir().join("foamy-audio-airplay.json")
+}
+
+/// Holds the lock that lets one `airplay` command run at a time, also
+/// across helpers of different shells (the stop a quitting shell started
+/// can still run when the next shell selects). The wait is a blocked flock
+/// on a thread of its own, so it ends the moment the lock is free; when
+/// `LOCK_WAIT` runs out, that thread stays blocked until the process exits.
+fn lock_session() -> Result<FileLock, String> {
+    let path = runtime_dir().join("foamy-audio-airplay.lock");
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || sender.send(FileLock::exclusive(&path)));
+    match receiver.recv_timeout(LOCK_WAIT) {
+        Ok(lock) => lock.map_err(|error| error.to_string()),
+        Err(_) => Err(format!(
+            "another AirPlay command did not finish within {} seconds",
+            LOCK_WAIT.as_secs()
+        )),
+    }
 }
 
 fn read_state(path: &Path) -> State {
@@ -442,9 +471,9 @@ fn remove_group(state: &State, runner: &mut dyn Runner) -> Result<(), String> {
 /// Unloads every AirPlay group that `state` does not record. A select
 /// leaves such a group when it is stopped between its save and the previous
 /// group's removal, when its load-module times out or prints no id, or when
-/// its own cleanup fails. Only this plugin names a sink with `GROUP_PREFIX`.
-/// A select records its new group only after routing to it, so a select
-/// that another helper runs at the same moment would lose its new group.
+/// its own cleanup fails. Only this plugin names a sink with `GROUP_PREFIX`,
+/// and one command runs at a time (`lock_session`), so none of these is the
+/// new group of a select that is still running.
 fn remove_unrecorded_groups(state: &State, runner: &mut dyn Runner) -> Result<(), String> {
     let recorded_id = py::integer(state.get("groupModuleId"));
     let recorded_sink = format!(
@@ -519,10 +548,17 @@ fn refuse(message: &str) -> Result<Outcome, String> {
 
 /// The reply when a step after routing failed and the new output stays:
 /// once the previous group is gone, routing back could fail as well. The
-/// text says that the output changed, `details` the cause.
-fn failed_after_routing(message: &str, details: String) -> Result<Outcome, String> {
+/// text says that the output changed, `details` the cause, and
+/// `selectedNames` and `target` the switch that stays, for the panel to
+/// take as after a select that succeeded.
+fn failed_after_routing(
+    message: &str,
+    details: String,
+    names: &[String],
+    target: &str,
+) -> Result<Outcome, String> {
     Ok((
-        json!({"ok": false, "error": message, "details": details}),
+        json!({"ok": false, "error": message, "details": details, "selectedNames": names, "target": target}),
         1,
     ))
 }
@@ -621,6 +657,8 @@ pub fn select(
         return failed_after_routing(
             "Output changed, but an earlier AirPlay group could not be removed.",
             error,
+            &names,
+            &target,
         );
     }
     let saved = (|| {
@@ -644,6 +682,8 @@ pub fn select(
             return failed_after_routing(
                 "Output changed, but the AirPlay session could not be saved.",
                 error,
+                &names,
+                &target,
             );
         }
         // Nothing records the new group, so the select is undone: apps go
@@ -676,6 +716,8 @@ pub fn select(
         return failed_after_routing(
             "Output changed, but an earlier AirPlay group could not be removed.",
             error,
+            &names,
+            &target,
         );
     }
     Ok((

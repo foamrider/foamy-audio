@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import signal
 import sys
+import time
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -19,6 +20,32 @@ STREAMS = ["pactl", "-f", "json", "list", "sink-inputs"]
 GET_DEFAULT = ["pactl", "get-default-sink"]
 ECHO_DEFAULT = {"echo_default": True}
 GROUP_LEFT = "Output changed, but an earlier AirPlay group could not be removed."
+
+
+def wait_until(condition, what, timeout=30):
+    """Polls `condition` until it holds; fails after `timeout` seconds."""
+    deadline = time.monotonic() + timeout
+    while not condition():
+        if time.monotonic() > deadline:
+            raise AssertionError(f"timed out waiting until {what}")
+        time.sleep(0.01)
+
+
+def waits_for_lock(pid, path):
+    """Whether process `pid` is blocked on the flock of `path` (/proc/locks)."""
+    try:
+        inode = str(os.stat(path).st_ino)
+    except FileNotFoundError:
+        return False
+    for line in Path("/proc/locks").read_text().splitlines():
+        # A blocked request: "<n>: -> FLOCK ADVISORY WRITE <pid> <major>:<minor>:<inode> <start> <end>"
+        fields = line.split()
+        if "->" in fields:
+            at = fields.index("->")
+            waiter, device = fields[at + 4], fields[at + 5]
+            if waiter == str(pid) and device.rsplit(":", 1)[-1] == inode:
+                return True
+    return False
 
 
 class AirPlayBridgeTest(unittest.TestCase):
@@ -478,7 +505,16 @@ class AirPlayBridgeTest(unittest.TestCase):
         )
         result = self.run_bridge("select", "raop_sink.a")
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertEqual(reply(result), {"ok": False, "error": GROUP_LEFT, "details": "Failure: busy"})
+        self.assertEqual(
+            reply(result),
+            {
+                "ok": False,
+                "error": GROUP_LEFT,
+                "details": "Failure: busy",
+                "selectedNames": ["raop_sink.a"],
+                "target": "raop_sink.a",
+            },
+        )
         # The speaker stays the output, and the group stays recorded for the
         # next select or stop.
         self.assertEqual(self.fakes.argvs()[2], ["pactl", "set-default-sink", "raop_sink.a"])
@@ -504,6 +540,7 @@ class AirPlayBridgeTest(unittest.TestCase):
             (payload["ok"], payload["error"]), (False, "Output changed, but the AirPlay session could not be saved.")
         )
         self.assertTrue(payload["details"].startswith("cannot create "), payload)
+        self.assertEqual((payload["selectedNames"], payload["target"]), ([], "alsa_output.local"))
         # The local output stays: nothing routes back to the speaker.
         self.assertEqual(
             self.fakes.argvs()[2:], [["pactl", "set-default-sink", "alsa_output.local"], GET_DEFAULT, STREAMS]
@@ -523,10 +560,55 @@ class AirPlayBridgeTest(unittest.TestCase):
         )
         result = self.run_bridge("select", "raop_sink.a")
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertEqual(reply(result), {"ok": False, "error": GROUP_LEFT, "details": "Failure: busy"})
+        self.assertEqual(
+            reply(result),
+            {
+                "ok": False,
+                "error": GROUP_LEFT,
+                "details": "Failure: busy",
+                "selectedNames": ["raop_sink.a"],
+                "target": "raop_sink.a",
+            },
+        )
         # The switch is done and saved; only the old group is left.
         self.assertEqual(self.saved(), {"selectedNames": ["raop_sink.a"]})
         self.assertEqual(self.fakes.argvs()[-2:], [MODULES, ["pactl", "unload-module", "88"]])
+        self.assertNothingLeft()
+
+    def test_a_group_switch_whose_unrecorded_groups_cannot_be_removed_names_its_speakers(self):
+        # The new group plays and is recorded: the panel takes its speakers
+        # from this reply, or its next tick builds on the speakers before.
+        sinks = [{"index": 70, "name": "raop_sink.a"}, {"index": 71, "name": "raop_sink.b"}]
+        self.write_state({"selectedNames": ["raop_sink.a"]})
+        self.fakes.queue(
+            "pactl",
+            json.dumps(sinks),
+            "88\n",
+            "raop_sink.a",
+            "",
+            ECHO_DEFAULT,
+            "[]",
+            "77\tmodule-combine-sink\tsink_name=foamy_airplay_group_9 sinks=raop_sink.c\n",
+            {"stderr": "Failure: busy\n", "code": 1},
+        )
+        result = self.run_bridge("select", "raop_sink.a", "raop_sink.b")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        group = self.loaded_group().removeprefix("sink_name=")
+        self.assertEqual(
+            reply(result),
+            {
+                "ok": False,
+                "error": GROUP_LEFT,
+                "details": "Failure: busy",
+                "selectedNames": ["raop_sink.a", "raop_sink.b"],
+                "target": group,
+            },
+            "the reply does not name the speakers that play now",
+        )
+        self.assertEqual(
+            (self.saved()["groupModuleId"], self.saved()["selectedNames"]), (88, ["raop_sink.a", "raop_sink.b"])
+        )
+        self.assertEqual(self.fakes.argvs()[-2:], [MODULES, ["pactl", "unload-module", "77"]])
         self.assertNothingLeft()
 
     # ---- groups no state records -------------------------------------------
@@ -595,6 +677,63 @@ class AirPlayBridgeTest(unittest.TestCase):
             "the group the stopped select replaced is still loaded",
         )
         self.assertEqual(self.saved()["restoreName"], "alsa_output.local")
+        self.assertNothingLeft()
+
+    def spawn_bridge(self, *args):
+        """The bridge started in the background; ended if the test stops early."""
+        process = self.fakes.spawn("airplay", *args)
+
+        def end():
+            if process.returncode is None:
+                process.kill()
+                process.communicate()
+
+        self.addCleanup(end)
+        return process
+
+    def test_a_stop_that_overlaps_a_later_select_leaves_its_group(self):
+        # A shell reload: the stop the quitting shell started (detached) still
+        # runs when the new shell's select starts. Discovery was enabled from
+        # outside, so the stop leaves the discovery module.
+        self.write_state({"moduleId": 27, "owned": False, "restoreName": "alsa_output.local"})
+        sinks = [{"index": 70, "name": "raop_sink.a"}, {"index": 71, "name": "raop_sink.b"}]
+        self.fakes.queue(
+            "pactl",
+            # The stop's listing answers once the test opens its gate, and
+            # lists the select's group if that is loaded by then.
+            {"hold": "stop", "group_listing": 88},
+            json.dumps(sinks),
+            "88\n",
+            "alsa_output.local",
+            "",
+            ECHO_DEFAULT,
+            "[]",
+            {"group_listing": 88},
+        )
+        stop = self.spawn_bridge("stop", "--skip-restore")
+        wait_until(lambda: MODULES in self.fakes.argvs(), "the stop lists the modules")
+        select = self.spawn_bridge("select", "raop_sink.a", "raop_sink.b")
+        lock = self.fakes.runtime / "foamy-audio-airplay.lock"
+        wait_until(
+            lambda: select.poll() is not None or waits_for_lock(select.pid, lock),
+            "the select has ended or waits for the stop",
+        )
+        self.fakes.release("stop")
+        stopped = stop.communicate(timeout=60)
+        selected = select.communicate(timeout=60)
+        self.assertNotIn(
+            ["pactl", "unload-module", "88"],
+            self.fakes.argvs(),
+            "the stop an earlier shell started unloaded the group the later select saved",
+        )
+        self.assertEqual(stop.returncode, 0, stopped)
+        self.assertEqual(select.returncode, 0, selected)
+        group = self.loaded_group().removeprefix("sink_name=")
+        self.assertEqual(
+            json.loads(selected[0]),
+            {"ok": True, "error": "", "selectedNames": ["raop_sink.a", "raop_sink.b"], "target": group},
+        )
+        self.assertEqual(self.saved()["groupModuleId"], 88)
         self.assertNothingLeft()
 
     def leave_a_group_whose_id_was_never_read(self, load, error):
