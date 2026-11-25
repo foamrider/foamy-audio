@@ -91,9 +91,10 @@ def needs_namespace(*paths):
 
 
 # One script for every queued fake: log the call, answer with the tool's next
-# queued response ({"stdout", "stderr", "code", "sleep"}).
+# queued response ({"stdout", "stderr", "code", "sleep"}, or "stop_helper"),
+# after its "hold" gate opened (Fakes.release).
 QUEUED = """#!{python} -I
-import fcntl, json, os, sys, time
+import fcntl, json, os, signal, sys, time
 here = {here!r}
 name = os.path.basename(sys.argv[0])
 with open(os.path.join(here, "lock"), "a") as lock:
@@ -118,12 +119,30 @@ with open(os.path.join(here, "lock"), "a") as lock:
 if response is None:
     print("fake " + name + ": no response queued", file=sys.stderr)
     sys.exit(99)
+if "hold" in response:
+    # Answers once the test opens this gate, so that another helper can run
+    # meanwhile; a gate that never opens ends the call after 30 s.
+    gate = os.path.join(here, "release-" + response["hold"])
+    for _ in range(600):
+        if os.path.exists(gate):
+            break
+        time.sleep(0.05)
+    else:
+        print("fake " + name + ": " + response["hold"] + " was never released", file=sys.stderr)
+        sys.exit(98)
+if response.get("stop_helper"):
+    # Like a shell that quits or reloads while the helper waits for this
+    # call: the helper ends at once, before it can act on any answer.
+    os.kill(os.getppid(), signal.SIGKILL)
+    sys.exit(0)
 if response.get("echo_default"):
     # Like WirePlumber once it applied the change: the sink set last.
     response["stdout"] = open(default).read() + "\\n"
 if "group_listing" in response:
-    # `pactl list modules short` with the combine sink this helper loaded.
-    response["stdout"] = "%d\\tmodule-combine-sink\\t%s sinks=raop_sink.a\\n" % (response["group_listing"], open(group).read())
+    # `pactl list modules short` with the combine sink a helper loaded, once
+    # one did (empty before).
+    loaded = os.path.exists(group)
+    response["stdout"] = "%d\\tmodule-combine-sink\\t%s sinks=raop_sink.a\\n" % (response["group_listing"], open(group).read()) if loaded else ""
 sys.stdout.write(response.get("stdout", ""))
 sys.stderr.write(response.get("stderr", ""))
 sys.stdout.flush()
@@ -243,6 +262,21 @@ class Fakes:
         if installed:
             (directory / RAOP_MODULE).write_bytes(b"\x7fELF fake module")
         self.binds.append((directory, RAOP_DIR))
+
+    def spawn(self, tool, *args):
+        """Starts `tool` like run() (without binds) and does not wait for it."""
+        return subprocess.Popen(
+            helper(tool) + list(args),
+            env=self.env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=self.root,
+        )
+
+    def release(self, gate):
+        """Lets the fake call that holds `gate` answer."""
+        (self.fake / ("release-" + gate)).write_text("")
 
     def run(self, tool, *args, env=None, timeout=60):
         argv = helper(tool) + list(args)

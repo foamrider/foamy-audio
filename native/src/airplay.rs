@@ -5,9 +5,11 @@ use std::ffi::OsString;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use foamy_helper::lock::FileLock;
 use foamy_helper::{Failure, json};
 use serde_json::{Map, Value, json};
 
@@ -18,6 +20,10 @@ const PULSE_MODULE: &str = "module-raop-discover";
 const PIPEWIRE_MODULE: &str = "libpipewire-module-raop-discover";
 const MODULE_PATH: &str = "/usr/lib/pipewire-0.3/libpipewire-module-raop-discover.so";
 const TIMEOUT: Duration = Duration::from_secs(12);
+/// How long a command waits for the one before it. A scan holds the lock
+/// through avahi-browse (12 s at most); a command that takes longer than
+/// this is hung, and the panel must not stay busy behind it.
+const LOCK_WAIT: Duration = Duration::from_secs(30);
 /// Largest state file read; a bigger one reads as no session.
 const MAX_STATE: u64 = 1 << 20;
 const GROUP_PREFIX: &str = "foamy_airplay_group_";
@@ -109,7 +115,9 @@ fn dispatch(command: &str, args: &py::Args) -> Outcome {
         c_locale: false,
     };
     let path = state_path();
-    let outcome = match command {
+    // From the state a command reads to the state it saves and the groups it
+    // removes, no other command may run beside it.
+    let outcome = lock_session().and_then(|_lock| match command {
         "start" => start(
             args.value("--restore-id").unwrap_or(""),
             args.value("--restore-name").unwrap_or(""),
@@ -130,7 +138,7 @@ fn dispatch(command: &str, args: &py::Args) -> Outcome {
             &path,
         ),
         _ => status(&mut runner, &path),
-    };
+    });
     outcome.unwrap_or_else(|detail| (failed(&detail), 1))
 }
 
@@ -141,19 +149,40 @@ fn usage(message: &str) -> Outcome {
     )
 }
 
+fn runtime_dir() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(format!("/run/user/{}", rustix::process::getuid().as_raw()))
+        })
+}
+
 fn state_path() -> PathBuf {
     if let Some(path) =
         std::env::var_os("FOAMY_AUDIO_AIRPLAY_STATE").filter(|path| !path.is_empty())
     {
         return PathBuf::from(path);
     }
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
-        .filter(|dir| !dir.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(format!("/run/user/{}", rustix::process::getuid().as_raw()))
-        });
-    runtime.join("foamy-audio-airplay.json")
+    runtime_dir().join("foamy-audio-airplay.json")
+}
+
+/// Holds the lock that lets one `airplay` command run at a time, also
+/// across helpers of different shells (the stop a quitting shell started
+/// can still run when the next shell selects). The wait is a blocked flock
+/// on a thread of its own, so it ends the moment the lock is free; when
+/// `LOCK_WAIT` runs out, that thread stays blocked until the process exits.
+fn lock_session() -> Result<FileLock, String> {
+    let path = runtime_dir().join("foamy-audio-airplay.lock");
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || sender.send(FileLock::exclusive(&path)));
+    match receiver.recv_timeout(LOCK_WAIT) {
+        Ok(lock) => lock.map_err(|error| error.to_string()),
+        Err(_) => Err(format!(
+            "another AirPlay command did not finish within {} seconds",
+            LOCK_WAIT.as_secs()
+        )),
+    }
 }
 
 fn read_state(path: &Path) -> State {
@@ -439,6 +468,39 @@ fn remove_group(state: &State, runner: &mut dyn Runner) -> Result<(), String> {
     Ok(())
 }
 
+/// Unloads every AirPlay group that `state` does not record. A select
+/// leaves such a group when it is stopped between its save and the previous
+/// group's removal, when its load-module times out or prints no id, or when
+/// its own cleanup fails. Only this plugin names a sink with `GROUP_PREFIX`,
+/// and one command runs at a time (`lock_session`), so none of these is the
+/// new group of a select that is still running.
+fn remove_unrecorded_groups(state: &State, runner: &mut dyn Runner) -> Result<(), String> {
+    let recorded_id = py::integer(state.get("groupModuleId"));
+    let recorded_sink = format!(
+        "sink_name={}",
+        py::str_of(state.get("groupName").unwrap_or(&Value::Null))
+    );
+    let ours = format!("sink_name={GROUP_PREFIX}");
+    let modules = checked(runner, &["pactl", "list", "modules", "short"])?;
+    for line in py::splitlines(&modules) {
+        let fields: Vec<&str> = line.split('\t').collect();
+        if fields.len() < 3 || fields[1] != "module-combine-sink" {
+            continue;
+        }
+        // The id goes into pactl's argv: only a module index it can print.
+        let Some(id) = py::int(fields[0]).and_then(|id| u32::try_from(id).ok()) else {
+            continue;
+        };
+        let arguments: Vec<&str> = py::split_whitespace(fields[2]).collect();
+        let recorded =
+            recorded_id == Some(i64::from(id)) && arguments.contains(&recorded_sink.as_str());
+        if !recorded && arguments.iter().any(|argument| argument.starts_with(&ours)) {
+            checked(runner, &["pactl", "unload-module", &id.to_string()])?;
+        }
+    }
+    Ok(())
+}
+
 fn sink_name(sink: &Value) -> Result<&str, String> {
     sink.get("name")
         .and_then(Value::as_str)
@@ -482,6 +544,23 @@ fn roll_back(
 
 fn refuse(message: &str) -> Result<Outcome, String> {
     Ok((json!({"ok": false, "error": message}), 1))
+}
+
+/// The reply when a step after routing failed and the new output stays:
+/// once the previous group is gone, routing back could fail as well. The
+/// text says that the output changed, `details` the cause, and
+/// `selectedNames` and `target` the switch that stays, for the panel to
+/// take as after a select that succeeded.
+fn failed_after_routing(
+    message: &str,
+    details: String,
+    names: &[String],
+    target: &str,
+) -> Result<Outcome, String> {
+    Ok((
+        json!({"ok": false, "error": message, "details": details, "selectedNames": names, "target": target}),
+        1,
+    ))
 }
 
 pub fn select(
@@ -572,8 +651,15 @@ pub fn select(
     // the helper is stopped meanwhile. With a new group, the new state is
     // saved first: a failed save then still finds the previous group loaded,
     // so routing back to it works.
-    if group.is_empty() {
-        remove_group(&recorded, runner)?;
+    if group.is_empty()
+        && let Err(error) = remove_group(&recorded, runner)
+    {
+        return failed_after_routing(
+            "Output changed, but an earlier AirPlay group could not be removed.",
+            error,
+            &names,
+            &target,
+        );
     }
     let saved = (|| {
         state.remove("groupModuleId");
@@ -593,10 +679,15 @@ pub fn select(
     })();
     if let Err(error) = saved {
         if group.is_empty() {
-            return Err(error);
+            return failed_after_routing(
+                "Output changed, but the AirPlay session could not be saved.",
+                error,
+                &names,
+                &target,
+            );
         }
-        // A new group that is not saved would stay loaded with no record for
-        // a later select or stop to unload it.
+        // Nothing records the new group, so the select is undone: apps go
+        // back to the previous output and the new group goes.
         let error = roll_back(error, Some(&previous), &group, runner);
         // The save fails after the file was replaced when only syncing its
         // directory fails. The file then no longer records the previous
@@ -612,12 +703,22 @@ pub fn select(
         && let Err(error) = remove_group(&recorded, runner)
     {
         let error = roll_back(error, Some(&previous), &group, runner);
-        // The previous group may still be loaded: record it again so that a
-        // later select or stop can remove it.
+        // Apps went back to the previous output, and the previous group may
+        // still be loaded: the state records it again.
         return Err(match write_state(path, &recorded) {
             Ok(()) => error,
             Err(rewrite) => rewrite,
         });
+    }
+    // Last: the state records this select's group by now, and the output is
+    // none of the groups that earlier selects left behind.
+    if let Err(error) = remove_unrecorded_groups(&state, runner) {
+        return failed_after_routing(
+            "Output changed, but an earlier AirPlay group could not be removed.",
+            error,
+            &names,
+            &target,
+        );
     }
     Ok((
         json!({"ok": true, "error": "", "selectedNames": names, "target": target}),
@@ -739,6 +840,7 @@ pub fn stop(
         route(&target, runner)?;
     }
     remove_group(&current, runner)?;
+    remove_unrecorded_groups(&current, runner)?;
     let module_id = py::integer(current.get("moduleId"));
     if current.get("owned") == Some(&Value::Bool(true))
         && let Some(module_id) = module_id
@@ -1119,7 +1221,7 @@ mod tests {
     }
 
     /// Answers like `Script` and keeps the state file as it was when the
-    /// module listing that starts a group's removal ran.
+    /// first module listing ran: the one that starts a group's removal.
     struct Watch<'a> {
         script: Script,
         path: &'a Path,
@@ -1128,7 +1230,7 @@ mod tests {
 
     impl Runner for Watch<'_> {
         fn run(&mut self, argv: &[&str]) -> Result<crate::run::Completed, String> {
-            if argv == ["pactl", "list", "modules", "short"] {
+            if argv == ["pactl", "list", "modules", "short"] && self.at_listing.is_none() {
                 self.at_listing = Some(read_state(self.path));
             }
             self.script.run(argv)
@@ -1137,7 +1239,7 @@ mod tests {
 
     /// The helper can be stopped while it removes the previous group (the
     /// shell exits or reloads). Until that group is unloaded, the state file
-    /// must still record it, or no later select or stop can remove it.
+    /// still records it, with the speakers it plays to.
     #[test]
     fn the_previous_group_stays_recorded_until_it_is_removed() {
         let sinks = json!([{"index": 1, "name": "raop_sink.a"}, {"index": 3, "name": "local"}]);
@@ -1160,6 +1262,7 @@ mod tests {
                 .ok(target)
                 .ok("[]")
                 .ok("40\tmodule-combine-sink\tsink_name=foamy_airplay_group_7 sinks=raop_sink.a\n")
+                .ok("")
                 .ok("");
             let mut runner = Watch {
                 script,
@@ -1169,10 +1272,7 @@ mod tests {
             let (reply, code) = select(&names, local, &mut runner, &path).unwrap();
             assert_eq!((code, reply["target"].as_str()), (0, Some(target)));
             assert!(runner.script.answers.is_empty(), "{target}: unused answers");
-            assert_eq!(
-                runner.script.calls.last().unwrap(),
-                &["pactl", "unload-module", "40"]
-            );
+            assert_eq!(runner.script.calls[6], ["pactl", "unload-module", "40"]);
             assert_eq!(
                 runner.at_listing.map(Value::Object),
                 Some(old.clone()),
@@ -1182,6 +1282,38 @@ mod tests {
             assert_eq!(saved.get("groupModuleId"), None, "{target}");
             assert_eq!(saved["selectedNames"], json!(names), "{target}");
         }
+    }
+
+    /// The module listing is pactl's output and its ids go into pactl's
+    /// argv: only a combine sink of ours with a module index pactl can
+    /// print is unloaded, and never the recorded group.
+    #[test]
+    fn only_unrecorded_groups_with_a_module_index_are_unloaded() {
+        let state = json!({"groupModuleId": 40, "groupName": "foamy_airplay_group_7"})
+            .as_object()
+            .cloned()
+            .unwrap();
+        let listing = [
+            "40\tmodule-combine-sink\tsink_name=foamy_airplay_group_7 sinks=raop_sink.a",
+            "41\tmodule-combine-sink\tsink_name=foamy_airplay_group_9 sinks=raop_sink.b",
+            "42\tmodule-combine-sink\tsink_name=someone_else sinks=raop_sink.c",
+            "43\tmodule-null-sink\tsink_name=foamy_airplay_group_3",
+            "44\tmodule-raop-discover\t",
+            "-5\tmodule-combine-sink\tsink_name=foamy_airplay_group_4",
+            "4294967296\tmodule-combine-sink\tsink_name=foamy_airplay_group_5",
+            "x\tmodule-combine-sink\tsink_name=foamy_airplay_group_6",
+            "4294967295\tmodule-combine-sink\tsink_name=foamy_airplay_group_8",
+        ]
+        .join("\n");
+        let mut runner = Script::new().ok(&listing).ok("").ok("");
+        remove_unrecorded_groups(&state, &mut runner).unwrap();
+        assert_eq!(
+            runner.calls[1..],
+            [
+                ["pactl", "unload-module", "41"],
+                ["pactl", "unload-module", "4294967295"]
+            ]
+        );
     }
 
     #[test]

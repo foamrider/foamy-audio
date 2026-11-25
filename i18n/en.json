@@ -50,6 +50,8 @@
   "An AirPlay speaker is no longer available. Reopen the panel.": "An AirPlay speaker is no longer available. Reopen the panel.",
   "An AirPlay speaker's name can't be used in a group.": "An AirPlay speaker's name can't be used in a group.",
   "No local output is available": "No local output is available",
+  "Output changed, but an earlier AirPlay group could not be removed.": "Output changed, but an earlier AirPlay group could not be removed.",
+  "Output changed, but the AirPlay session could not be saved.": "Output changed, but the AirPlay session could not be saved.",
   "Microphone level unavailable": "Microphone level unavailable",
   "AirPlay speaker": "AirPlay speaker",
   "Unknown": "Unknown",

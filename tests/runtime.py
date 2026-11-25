@@ -250,8 +250,8 @@ held() { echo "{\\"ok\\":false,\\"error\\":\\"fake helper: $1 was never released
 # The helper as a scripted fake for tests/qml/Helper.qml: each call is logged
 # with its arguments joined by "|" (so empty ones show). The first start,
 # the kitchen choice and verify wait for the scene (hold), so the scene can
-# act while they run; the answers cover refusals and replies that are not
-# JSON.
+# act while they run; the answers cover refusals, replies that are not JSON
+# and a choice that failed after the output changed (its cause in details).
 # The cancel text is the one the helper's black-box tests expect from ufw.rs
 # (CANCELLED in tests/blackbox.py): if the helper's text changes, this scene
 # fails until Panel.qml matches the new text.
@@ -271,6 +271,7 @@ case "$1 $2" in
     case "$name" in
       raop_sink.gone) echo '{"ok":false,"error":"An AirPlay speaker is no longer available. Reopen the panel."}'; exit 1 ;;
       raop_sink.garbage) echo oops ;;
+      raop_sink.half) echo '{"ok":false,"error":"Output changed, but an earlier AirPlay group could not be removed.","details":"CHANGED_CAUSE","selectedNames":["raop_sink.half"],"target":"raop_sink.half"}'; exit 1 ;;
       --local-name) echo "{\\"ok\\":true,\\"error\\":\\"\\",\\"selectedNames\\":[],\\"target\\":\\"$4\\"}" ;;
       raop_sink.kitchen) hold select || held select; echo '{"ok":true,"error":"","selectedNames":["raop_sink.kitchen"],"target":"raop_sink.kitchen"}' ;;
       *) echo "{\\"ok\\":true,\\"error\\":\\"\\",\\"selectedNames\\":[\\"$name\\"],\\"target\\":\\"$name\\"}" ;;
@@ -284,9 +285,16 @@ case "$1 $2" in
   *) echo '{"ok":false,"error":"fake helper: unexpected call"}'; exit 1 ;;
 esac
 """
-HELPER = HELPER.replace("HOLD", HOLD, 1).replace(
-    "UFW_OPEN_REPLY",
-    shlex.quote(json.dumps({"state": "error", "message": "Could not apply UFW rules.", "details": CANCELLED})),
+# The cause the service must log for that choice (Helper.qml shows only the
+# fixed text).
+CHANGED_CAUSE = "fake helper: the old group is busy"
+HELPER = (
+    HELPER.replace("HOLD", HOLD, 1)
+    .replace(
+        "UFW_OPEN_REPLY",
+        shlex.quote(json.dumps({"state": "error", "message": "Could not apply UFW rules.", "details": CANCELLED})),
+    )
+    .replace("CHANGED_CAUSE", CHANGED_CAUSE)
 )
 START = "airplay|start|--restore-id||--restore-name|"
 STOP = "airplay|stop|--skip-restore"
@@ -306,6 +314,7 @@ HELPER_CALLS = [
     "airplay|select|--|raop_sink.gone",
     "airplay|select|--local-name|alsa_output.usb",
     "airplay|select|--|raop_sink.garbage",
+    "airplay|select|--|raop_sink.half",
     STOP,
     START,
     STOP,
@@ -338,6 +347,8 @@ def run_helper(mode):
     rest = [call for call in calls if call != "airplay|status"]
     if len(status) != (1 if expected else 0) or rest != expected:
         failures.append(f"FOAMY FAIL helper calls: {calls}")
+    if mode == "helper" and f"Foamy Audio AirPlay: {CHANGED_CAUSE}" not in r.log:
+        failures.append("FOAMY FAIL the cause of a choice that failed after the output changed is not in the log")
     if r.host_commands():
         failures.append(f"FOAMY FAIL host commands ran without a fake: {r.host_commands()}")
     result = next(

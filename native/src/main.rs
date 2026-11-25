@@ -34,6 +34,14 @@
 //! One compact JSON line on stdout for every outcome. Children: `pactl` and
 //! `avahi-browse`, 12 s each, with the caller's environment.
 //!
+//! Commands run one at a time, also across helpers of different shells:
+//! each holds an exclusive `flock` on
+//! `${XDG_RUNTIME_DIR:-/run/user/<uid>}/foamy-audio-airplay.lock` (created
+//! with mode 0600; a symlink, a non-regular file or another user's file is
+//! an error) from before it reads the state until it is done. The next one
+//! waits for it at most 30 s, then fails with `"AirPlay helper failed:
+//! another AirPlay command did not finish within 30 seconds"` exit 1.
+//!
 //! - `start`: `pactl list modules short`; a line whose second field is
 //!   `module-raop-discover` or `libpipewire-module-raop-discover` and whose
 //!   first is an integer is a discovery module. The remembered `moduleId` if
@@ -66,8 +74,9 @@
 //!   per lowercased service name, the IPv4 record preferred, first-seen order:
 //!   `{name, hostname, address, port, vendor, model}`.
 //! - `stop`: unless `--skip-restore`, route to `--restore-name` or the
-//!   remembered `restoreName` (see routing); remove our group (below); if
-//!   `owned` and the module is still listed, `pactl unload-module <id>`.
+//!   remembered `restoreName` (see routing); remove our group, then the
+//!   unrecorded groups (both below); if `owned` and the module is still
+//!   listed, `pactl unload-module <id>`.
 //!   Errors are joined with `"; "`; without errors the state file is
 //!   removed. Reply `{"ok", "error", "restoreName"}`, exit 0 or 1.
 //! - `status`: `{"ok":true,"active":<remembered moduleId is listed>,
@@ -93,17 +102,23 @@
 //!   failure rolls back, where Python skipped it for malformed pactl JSON);
 //!   on success save `groupModuleId`/`groupName` (or drop them) and
 //!   `selectedNames`, then remove the previous group (without a new group,
-//!   remove it first, so the state records it until it is unloaded). Reply
+//!   remove it first, so the state records it until it is unloaded), then
+//!   the unrecorded groups (below). Reply
 //!   `{"ok":true,"error":"","selectedNames","target"}`.
 //!   Once its id is read, a new group is not left behind: when reading the
 //!   previous output, saving the state or removing the previous group fails,
 //!   it is removed again the same way (routing back first once routing
 //!   began; this cleanup can fail too, then the group stays loaded with no
-//!   record). When removing the previous group fails, or a failed save still
-//!   replaced the file (only syncing its directory failed), the previous
-//!   state is written back so that group stays recorded (a failing write's
-//!   error then replaces the reply's). Without a new group, a failed save
-//!   or removal leaves the new route in place.
+//!   record until the next select or stop). When removing the previous
+//!   group fails, or a failed save still replaced the file (only syncing its
+//!   directory failed), the previous state is written back so that group
+//!   stays recorded (a failing write's error then replaces the reply's).
+//!   Without a new group, a failed save or removal leaves the new route in
+//!   place, and so does a failed removal of the unrecorded groups after any
+//!   switch: `{"ok":false,"error":"Output changed, but the AirPlay session
+//!   could not be saved."` (the save) or `"Output changed, but an earlier
+//!   AirPlay group could not be removed."` (a removal), `"details":<the
+//!   failure>,"selectedNames","target"}` (the switch that stays) exit 1.
 //! - Routing to a sink: `pactl set-default-sink <sink>`, then up to 20 times
 //!   `pactl get-default-sink` 100 ms apart until it answers the sink (else
 //!   "The selected output did not become the default"), then `pactl -f
@@ -112,6 +127,13 @@
 //! - Removing a group: only when `groupModuleId` is an integer and `pactl
 //!   list modules short` shows it as `module-combine-sink` with
 //!   `sink_name=<groupName>` in its arguments: `pactl unload-module <id>`.
+//! - Removing the unrecorded groups: `pactl list modules short`, then `pactl
+//!   unload-module <id>` for each `module-combine-sink` whose id is an
+//!   integer from 0 to 4294967295 and whose arguments hold a
+//!   `sink_name=foamy_airplay_group_…`, except the recorded `groupModuleId`
+//!   with `sink_name=<groupName>`. A select leaves such a group when it is
+//!   stopped between its save and the previous group's removal, when its
+//!   `load-module` times out or prints no id, or when its cleanup fails.
 //! - Any other failure (a tool missing, a timeout, a pactl error inside a
 //!   step, malformed pactl JSON, a state write): `{"ok":false,"error":
 //!   "AirPlay helper failed: <detail>"}` exit 1. A pactl failure's detail is

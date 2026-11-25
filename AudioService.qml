@@ -678,6 +678,13 @@ Singleton {
       if (code !== 0 || payload.ok !== true) {
         root.airplayError = String(payload.error || "Could not change output.")
         root.airplayScanState = "error"
+        // A select that failed after the output changed names the speakers
+        // that play now: the next tick in a group builds on them.
+        if (Array.isArray(payload.selectedNames))
+          root.selectedAirplayNames = payload.selectedNames
+        // The shown text is a fixed catalog text; its cause goes to the log.
+        if (typeof payload.details === "string" && payload.details !== "")
+          console.warn("Foamy Audio AirPlay:", payload.details)
         return
       }
       root.selectedAirplayNames = payload.selectedNames || []
