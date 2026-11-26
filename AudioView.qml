@@ -57,8 +57,6 @@ PanelKeyCatcher {
           settingsPage.resetScroll()
           settingsPage.focusBack()
         })
-      else
-        view.forceActiveFocus()
     }
   }
 
