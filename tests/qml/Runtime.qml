@@ -10,7 +10,8 @@ import "plugin/kit"
 // three monitors), one leader, the host's platform helpers, the bar button
 // and its one setting, the lazy popup body in its empty state (no audio
 // server), the single keyboard cursor, unfolding a section below the fold,
-// settings saving through the bar, translations and RTL mirroring.
+// settings saving through the bar, Esc after the popup closed on Settings,
+// translations and RTL mirroring.
 ShellRoot {
   id: shell
   readonly property string host: Quickshell.env("FOAMY_HOST")
@@ -380,7 +381,51 @@ ShellRoot {
     eq(shell.meter.stderrHead.length, shell.meter.stderrLimit, "meter keeps only the head of a stderr flood")
     eq(shell.meter.stderrHead.replace(/x/g, ""), "", "kept head is the helper's output")
     eq(shell.meter.failure, "", "a closed meter reports no failure")
-    shell.volumeSink()
+    shell.closeOnSettings()
+  }
+
+  // The popup closes while Settings shows. Opened again, it shows the list,
+  // and the list has the keys: a real Esc closes the popup instead of
+  // reaching the hidden settings page.
+  function closeOnSettings() {
+    var first = panels.itemAt(0)
+    barButton.pressed(Qt.LeftButton)
+    first.openSettings()
+    var page = findType(first.popup.bodyItem, function (item) {
+      return item.foamyKeyHome === item && item.retryable !== undefined
+    })
+    check(page !== null, "settings page found")
+    if (!page) {
+      shell.volumeSink()
+      return
+    }
+    // The page takes the keys just after it shows.
+    wait.waitFor(function () {
+      return page.activeFocus
+    }, 5000, function () {
+      barButton.pressed(Qt.LeftButton)
+      eq(first.opened, false, "the bar button closes the popup on Settings")
+      eq(first.editingSettings, false, "closing the popup leaves Settings")
+      wait.waitFor(function () {
+        return !first.popup.visible
+      }, 5000, reopenAfterSettings, "the closed popup hides")
+    }, "fixture: the settings page has the keys")
+  }
+  function reopenAfterSettings() {
+    var first = panels.itemAt(0)
+    var view = first.popup.bodyItem
+    barButton.pressed(Qt.LeftButton)
+    eq(first.opened, true, "the bar button opens the popup again")
+    eq(first.editingSettings, false, "opened again on the list")
+    wait.waitFor(function () {
+      return view.activeFocus
+    }, 5000, function () {
+      var ev = Qt.createQmlObject("import QtTest; TestEvent {}", view)
+      ev.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
+      ev.destroy()
+      eq(first.opened, false, "Esc closes the popup opened again after Settings")
+      shell.volumeSink()
+    }, "opened again, the list has the keys")
   }
 
   // tests/runtime.py compares the name with the number of runs the fake
