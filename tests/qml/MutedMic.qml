@@ -10,7 +10,7 @@ import "plugin/kit"
 // it in two dark themes where the raw urgent colour does not read on the
 // band, one with a dim red and one with a bright accent. The icon must read on every pixel the band painted
 // under it, at rest and under the action's hover fill, and keep its colour
-// under the cursor.
+// under the cursor. Then the keys' border on Mute all.
 ShellRoot {
   id: shell
   property int checks: 0
@@ -245,6 +245,25 @@ ShellRoot {
     reads("under the cursor")
     var icon = micIcon()
     check(Qt.colorEqual(icon.color, restColour), "the icon keeps its colour under the cursor: " + restColour + " at rest, " + icon.color)
+    footerKeys()
+  }
+  // Mute all (enabled here, unlike in Runtime.qml without a server): the
+  // keys' cursor draws its accent border, the pointer's does not.
+  function footerKeys() {
+    for (var n = 0; n < view.stops.length && view.cursorKey !== "muteAll"; n++)
+      view.moveRequested(0, 1)
+    var footer = findWith(view, function (item) {
+      return item.cursorByKeys !== undefined && item.border !== undefined && item.hasCursor === true
+    })
+    check(view.cursorKey === "muteAll" && footer !== null, "fixture: ↓ reaches Mute all (" + view.cursorKey + ")")
+    if (footer) {
+      check(footer.cursorByKeys && footer.border.width > 0 && Qt.colorEqual(footer.border.color, Commons.Color.accent), "↓: Mute all draws the keys' border")
+      var ev = Qt.createQmlObject("import QtTest; TestEvent {}", view)
+      ev.mouseMove(footer, footer.width / 2, footer.height / 2, -1, Qt.NoButton, Qt.NoModifier)
+      ev.mouseMove(footer, footer.width / 2 + 1, footer.height / 2, -1, Qt.NoButton, Qt.NoModifier)
+      ev.destroy()
+      check(footer.hovered && footer.hasCursor && footer.border.width === 0, "the pointer on Mute all: its cursor, no keys' border (hovered " + footer.hovered + ")")
+    }
     finish()
   }
 

@@ -85,6 +85,9 @@ PanelKeyCatcher {
     id: cursor
     count: view.stops.length
   }
+  // The keys moved the cursor last: the rows and buttons draw its accent
+  // border (FoamyCursor.byKeys).
+  readonly property bool cursorByKeys: cursor.byKeys
 
   function hasCursor(key) {
     return cursorKey === key
@@ -150,6 +153,7 @@ PanelKeyCatcher {
     var key = cursorKey
     if (headerStops.indexOf(key) >= 0) {
       cursor.index = Math.max(0, Math.min(headerStops.length - 1, cursor.index + direction))
+      cursor.byKeys = true
     } else if (key === "volume") {
       audio.setOutputVolume(audio.outputVolume + direction * step)
     } else {
@@ -188,13 +192,15 @@ PanelKeyCatcher {
 
   onMoveRequested: function (dx, dy) {
     if (dy !== 0) {
-      if (!cursor.active)
+      if (!cursor.active) {
         cursor.index = stops.indexOf("volume")
-      else
+        cursor.byKeys = true
+      } else
         cursor.move(dy)
     } else if (dx !== 0) {
       if (!cursor.active) {
         cursor.index = stops.indexOf("volume")
+        cursor.byKeys = true
         return
       }
       // The host's key catcher already gives dx in reading order in a
@@ -459,6 +465,7 @@ PanelKeyCatcher {
       foreground: FoamyPalette.secondaryText
       enabled: view.audio.hasOutput || view.audio.hasInput
       hasCursor: view.hasCursor("muteAll")
+      cursorByKeys: view.cursorByKeys
       onHoveredChanged: if (hovered)
         view.hover("muteAll")
       onClicked: view.audio.toggleAllMuted()
@@ -567,6 +574,7 @@ PanelKeyCatcher {
       label: section.label
       expanded: section.expanded
       hasCursor: view.hasCursor("section:" + section.name)
+      byKeys: view.cursorByKeys
       onHovered: view.hover("section:" + section.name)
       onToggled: view.toggleSection(section.name)
       onHasCursorChanged: if (hasCursor)
@@ -625,6 +633,7 @@ PanelKeyCatcher {
     muted: view.audio.nodeMuted(target)
     step: 0.01
     hasCursor: view.hasCursor(key)
+    byKeys: view.cursorByKeys
     onHovered: view.hover(key)
     onHasCursorChanged: if (hasCursor)
       view.keepVisible(device)

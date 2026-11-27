@@ -230,6 +230,7 @@ ShellRoot {
     check(sectionText(view, "output", FoamyI18n.t("No output devices")) !== null, "Output says there are no output devices")
     check(sectionText(view, "input", FoamyI18n.t("No input devices")) !== null, "Input says there are no input devices")
     eq(view.cursorKey, "", "no cursor highlight on open")
+    eq(keysLooks(view).length, 0, "nothing draws the keys' border on open")
     view.moveRequested(0, 1)
     eq(view.cursorKey, "volume", "first move lands on the volume slider")
     // Sliders (DESIGN.md "Sliders"): the cursor rings the header slider's
@@ -292,9 +293,71 @@ ShellRoot {
     }, 5000, stepTwoSettings, "unfolding scrolls Wireless into view")
   }
 
+  // Every item under `item` that passes `test`.
+  function findAll(item, test, found) {
+    found = found || []
+    if (!item)
+      return found
+    if (test(item))
+      found.push(item)
+    var kids = item.children || []
+    for (var i = 0; i < kids.length; i++)
+      findAll(kids[i], test, found)
+    return found
+  }
+  // An element draws the keys' cursor: a row's 1 px accent border, an
+  // action's border (the pointer's cursor has neither).
+  function keysLook(item) {
+    if (item.borderSpec !== undefined)
+      return item.hasCursor && item.borderTop >= FoamyStyle.borderWidth && Qt.colorEqual(item.borderSpec.color, item.accent)
+    return item.border.width > 0
+  }
+  function keysLooks(view) {
+    return findAll(view, function (item) {
+      return item.visible && ((item.byKeys !== undefined && item.borderSpec !== undefined) || (item.cursorByKeys !== undefined && item.border !== undefined)) && shell.keysLook(item)
+    })
+  }
+  // The keys' cursor shows where the keys are: a section and a row draw its
+  // accent border; the pointer's cursor draws none. (Mute all, disabled
+  // here without an audio server: tests/qml/MutedMic.qml.)
+  function keysBorder(view) {
+    var ev = Qt.createQmlObject("import QtTest; TestEvent {}", view)
+    var surface = function () {
+      return findType(view, function (item) {
+        return item.byKeys !== undefined && item.borderSpec !== undefined && item.hasCursor === true
+      })
+    }
+    // The pointer off the list, so rows scrolling under it don't take the
+    // cursor (the band's title row has no stop).
+    ev.mouseMove(view, view.width / 2, 2, -1, Qt.NoButton, Qt.NoModifier)
+    // From the header (where the earlier ←/→ left it in this language).
+    for (var i = 0; i < 5 && view.cursorKey !== "section:input"; i++)
+      ev.keyClick(Qt.Key_Down, Qt.NoModifier, -1)
+    eq(view.cursorKey, "section:input", "fixture: ↓ from the header reaches Input (Output folded)")
+    var section = surface()
+    check(section !== null && section.byKeys && keysLook(section), "↓: the Input section draws the keys' border")
+    ev.keyClick(Qt.Key_Down, Qt.NoModifier, -1)
+    eq(view.cursorKey, "source:0", "fixture: ↓ reaches the first input")
+    var row = surface()
+    check(row !== null && row.key === "source:0" && row.byKeys && keysLook(row), "↓: the input row draws the keys' border")
+    eq(keysLooks(view).length, 1, "one element draws the keys' border")
+    // The pointer onto the next row: its cursor, and no keys' border anywhere.
+    var next = findType(view, function (item) {
+      return item.key === "source:1" && item.byKeys !== undefined
+    })
+    check(next !== null, "fixture: the second input row")
+    if (next) {
+      ev.mouseMove(next, next.width / 2, next.height / 2, -1, Qt.NoButton, Qt.NoModifier)
+      eq(view.cursorKey, "source:1", "the pointer moves the cursor to the second input")
+      eq(keysLooks(view).length, 0, "after the pointer moved, nothing draws the keys' border")
+    }
+    ev.destroy()
+  }
+
   function stepTwoSettings() {
     var first = panels.itemAt(0)
     var view = first.popup.bodyItem
+    shell.keysBorder(view)
     eq(view.LayoutMirroring.enabled, shell.lang === "ar", "popup body mirrors in RTL only")
     shell.key(view, "s")
     eq(first.editingSettings, true, "s opens Settings")
