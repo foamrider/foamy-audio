@@ -351,6 +351,9 @@ ShellRoot {
       eq(view.cursorKey, "source:1", "the pointer moves the cursor to the second input")
       eq(keysLooks(view).length, 0, "after the pointer moved, nothing draws the keys' border")
     }
+    // The pointer back off the list, so later steps keep their cursor when
+    // the list moves.
+    ev.mouseMove(view, view.width / 2, 2, -1, Qt.NoButton, Qt.NoModifier)
     ev.destroy()
   }
 

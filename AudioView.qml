@@ -191,22 +191,20 @@ PanelKeyCatcher {
   }
 
   onMoveRequested: function (dx, dy) {
-    if (dy !== 0) {
-      if (!cursor.active) {
+    // The first key of either axis puts the cursor on the volume.
+    if (!cursor.active) {
+      if (dx !== 0 || dy !== 0) {
         cursor.index = stops.indexOf("volume")
         cursor.byKeys = true
-      } else
-        cursor.move(dy)
-    } else if (dx !== 0) {
-      if (!cursor.active) {
-        cursor.index = stops.indexOf("volume")
-        cursor.byKeys = true
-        return
       }
+      return
+    }
+    if (dy !== 0)
+      cursor.move(dy)
+    else if (dx !== 0)
       // The host's key catcher already gives dx in reading order in a
       // mirrored panel, and the header row and every slider mirror with it.
       adjust(dx)
-    }
   }
   onActivateRequested: activateStop()
   onCloseRequested: audio.close()
@@ -258,6 +256,7 @@ PanelKeyCatcher {
     title: FoamyI18n.t("Audio")
     meta: view.audio.outputLabel || FoamyI18n.t("No output devices")
     settingsHasCursor: view.hasCursor("settings")
+    cursorByKeys: view.cursorByKeys
     onSettingsClicked: view.audio.openSettings()
     onSettingsHovered: function (hovered) {
       if (hovered)
@@ -269,6 +268,7 @@ PanelKeyCatcher {
         foreground: FoamyPalette.secondaryText
         enabled: view.audio.hasOutput
         hasCursor: view.hasCursor("outputMute")
+        cursorByKeys: view.cursorByKeys
         tooltipText: FoamyI18n.t(view.audio.outputMuted ? "Unmute output" : "Mute output")
         onHoveredChanged: if (hovered)
           view.hover("outputMute")
@@ -282,6 +282,7 @@ PanelKeyCatcher {
         foreground: view.audio.inputMuted ? FoamyPalette.onSurface(Commons.Color.urgent, Qt.tint(Qt.tint(FoamyPalette.bandFillEnd, FoamyPalette.bandGlow), FoamyPalette.hoverFill)) : FoamyPalette.secondaryText
         enabled: view.audio.hasInput
         hasCursor: view.hasCursor("inputMute")
+        cursorByKeys: view.cursorByKeys
         tooltipText: FoamyI18n.t(view.audio.inputMuted ? "Unmute microphone" : "Mute microphone")
         onHoveredChanged: if (hovered)
           view.hover("inputMute")
