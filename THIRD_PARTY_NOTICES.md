@@ -12,9 +12,9 @@ How the lists are made:
 
 ## `foamy-audio-helper`
 
-- `bin/aarch64/foamy-audio-helper`: sha256 `8b6f5878d35331a13f4e210f96fa4fd47efb2db7fe6745167b548299eb09b643`
-- `bin/x86_64/foamy-audio-helper`: sha256 `2e0bab58f4590344c8be0188cde7b8079e992db62ea0f23cf8c12a8474e96a06`
-- `native/native.pin`: source `026c81e9a9496fdd62336e556a1d284194d42ac6d1101322d9ef628530a6ee50`, toolchain 1.99.1
+- `bin/aarch64/foamy-audio-helper`: sha256 `ba0faaea589e303cdbde06bf7952e49511ab47c61bf02ad3b705382b646c7779`
+- `bin/x86_64/foamy-audio-helper`: sha256 `f77adae1d18f15ea0e9cdb214367bcbe6aefc35b414072f728d49d3d2b61ef70`
+- `native/native.pin`: source `25671758fd02b2b37a973a9a327de373b82713ee4f2b115cf96e2aeb63c22d64`, toolchain 1.99.1
 
 ### Crates linked into `foamy-audio-helper`
 
@@ -36,7 +36,7 @@ First-party crates (not third-party code, listed for completeness):
 | Crate | Version | Source | License | Arches | Notices |
 |---|---|---|---|---|---|
 | foamy-audio-helper | 0.1.0 | `native/` (this plugin) | MIT | both | `LICENSE` |
-| foamy-helper | 0.1.2 | `kit/rust/foamy-helper/` (foamy-kit, vendored) | MIT | both | [N4](#n4) |
+| foamy-helper | 0.1.3 | `kit/rust/foamy-helper/` (foamy-kit, vendored) | MIT | both | [N4](#n4) |
 
 ### Toolchain code linked into `foamy-audio-helper`
 
@@ -312,7 +312,7 @@ Copyright 2014 The Rust Project Developers. See the COPYRIGHT
 
 ### N4
 
-Shipped by: foamy-helper 0.1.2 (foamy-kit's LICENSE).
+Shipped by: foamy-helper 0.1.3 (foamy-kit's LICENSE).
 
 ```text
 MIT License
