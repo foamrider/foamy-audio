@@ -324,14 +324,19 @@ HELPER_CALLS = [
 DIM_RED = KIT / "tests/fixtures/themes/dim-red.toml"
 
 
-def run_muted_mic():
+# A bright accent and a red that ends its stepping inside the limit: there
+# the icon's colour depends on the surface it is measured on.
+BRIGHT_ACCENT = PLUGIN / "tests/themes/bright-accent.toml"
+
+
+def run_muted_mic(theme):
     """tests/qml/MutedMic.qml: the muted microphone's icon reads on the hero band."""
     r = harness.Run(
         "4.5",
         (PLUGIN / "tests/qml/MutedMic.qml").read_text(),
         plugin=PLUGIN,
-        theme=DIM_RED,
-        prefix="fa-mm-",
+        theme=theme,
+        prefix=f"fa-mm-{theme.stem}-",
         fakebin={name: FAKE for name in FAKES},
     )
     r.run(60)
@@ -342,7 +347,7 @@ def run_muted_mic():
         (line.split("FOAMY RESULT ", 1)[1] for line in r.log.splitlines() if "FOAMY RESULT" in line), "no result"
     )
     ok = "FOAMY DONE" in r.log and not failures
-    print(f"{'PASS' if ok else 'FAIL'} runtime muted microphone: {result}")
+    print(f"{'PASS' if ok else 'FAIL'} runtime muted microphone ({theme.stem}): {result}")
     if not ok:
         print("\n".join("    " + line for line in (failures or r.log.splitlines()[-40:])))
     else:
@@ -400,7 +405,8 @@ if __name__ == "__main__":
     cases = [("4.5", "en"), ("4.5", "no"), ("4.5", "ar")]
     results = [run(host, lang) for host, lang in cases] + [
         run_leftover(),
-        run_muted_mic(),
+        run_muted_mic(DIM_RED),
+        run_muted_mic(BRIGHT_ACCENT),
         run_helper("helper"),
         run_helper("nohelper"),
     ]
