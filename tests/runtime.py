@@ -334,7 +334,6 @@ def run_muted_mic():
         prefix="fa-mm-",
         fakebin={name: FAKE for name in FAKES},
     )
-    r.env.update(FOAMY_FAKE_ERROR=FAKE_ERROR)
     r.run(60)
     failures = r.failures()
     if r.host_commands():
