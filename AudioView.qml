@@ -270,9 +270,10 @@ PanelKeyCatcher {
       },
       FoamyAction {
         iconName: view.audio.inputMuted ? "mic-off" : "mic"
-        // On the hero band's fill under the action's hover fill, its
-        // strongest state (the band's glow is left out).
-        foreground: view.audio.inputMuted ? FoamyPalette.onSurface(Commons.Color.urgent, Qt.tint(FoamyPalette.bandFill, FoamyPalette.hoverFill)) : FoamyPalette.secondaryText
+        // Measured on the strongest fill at the band's trailing top corner,
+        // the same at rest and under the cursor: the wash's end colour, the
+        // glow at its peak and the action's hover fill.
+        foreground: view.audio.inputMuted ? FoamyPalette.onSurface(Commons.Color.urgent, Qt.tint(Qt.tint(FoamyPalette.bandFillEnd, FoamyPalette.bandGlow), FoamyPalette.hoverFill)) : FoamyPalette.secondaryText
         enabled: view.audio.hasInput
         hasCursor: view.hasCursor("inputMute")
         tooltipText: FoamyI18n.t(view.audio.inputMuted ? "Unmute microphone" : "Mute microphone")

@@ -321,15 +321,46 @@ HELPER_CALLS = [
 ]
 
 
+DIM_RED = KIT / "tests/fixtures/themes/dim-red.toml"
+
+
+def run_muted_mic():
+    """tests/qml/MutedMic.qml: the muted microphone's icon reads on the hero band."""
+    r = harness.Run(
+        "4.5",
+        (PLUGIN / "tests/qml/MutedMic.qml").read_text(),
+        plugin=PLUGIN,
+        theme=DIM_RED,
+        prefix="fa-mm-",
+        fakebin={name: FAKE for name in FAKES},
+    )
+    r.env.update(FOAMY_FAKE_ERROR=FAKE_ERROR)
+    r.run(60)
+    failures = r.failures()
+    if r.host_commands():
+        failures.append(f"FOAMY FAIL host commands ran without a fake: {r.host_commands()}")
+    result = next(
+        (line.split("FOAMY RESULT ", 1)[1] for line in r.log.splitlines() if "FOAMY RESULT" in line), "no result"
+    )
+    ok = "FOAMY DONE" in r.log and not failures
+    print(f"{'PASS' if ok else 'FAIL'} runtime muted microphone: {result}")
+    if not ok:
+        print("\n".join("    " + line for line in (failures or r.log.splitlines()[-40:])))
+    else:
+        r.cleanup()
+    return ok
+
+
 def run_helper(mode):
     """tests/qml/Helper.qml: the helper protocol, or (nohelper) no helper for this CPU."""
     r = harness.Run(
         "4.5",
         (PLUGIN / "tests/qml/Helper.qml").read_text(),
         plugin=None,
-        # No helper: its error texts are checked in a dark theme with a dim
-        # red (2.70:1 on the popup), where they must lighten to read.
-        theme=KIT / "tests/fixtures/themes/dim-red.toml" if mode == "nohelper" else "dark",
+        # The error texts (no helper) and the wide-rule warning (helper) are
+        # checked in a dark theme with a dim red (2.70:1 on the popup), where
+        # they must lighten to read.
+        theme=DIM_RED,
         language="no",
         prefix=f"fa-hp-{mode}-",
         fakebin={name: FAKE for name in FAKES},
@@ -368,5 +399,10 @@ def run_helper(mode):
 
 if __name__ == "__main__":
     cases = [("4.5", "en"), ("4.5", "no"), ("4.5", "ar")]
-    results = [run(host, lang) for host, lang in cases] + [run_leftover(), run_helper("helper"), run_helper("nohelper")]
+    results = [run(host, lang) for host, lang in cases] + [
+        run_leftover(),
+        run_muted_mic(),
+        run_helper("helper"),
+        run_helper("nohelper"),
+    ]
     raise SystemExit(0 if all(results) else 1)

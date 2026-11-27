@@ -66,6 +66,21 @@ ShellRoot {
     return found
   }
 
+  // The `count` texts saying `text` read on the popup card as drawn.
+  // tests/runtime.py runs this scene in a theme whose red reads 2.70:1 on
+  // the popup; the first check proves that theme is in effect.
+  function readsOnPopup(text, count, label) {
+    var card = panel.popup.cardItem.color
+    var raw = FoamyPalette.contrastRatio(FoamyPalette.error, card)
+    check(raw < 4.5, "the theme's raw red is under 4.5:1 on the popup: " + raw.toFixed(2) + ":1")
+    var said = textsSaying(view, text, [])
+    eq(said.length, count, label + " is shown")
+    said.forEach(function (item) {
+      var ratio = FoamyPalette.contrastRatio(item.color, card)
+      check(ratio >= 4.5, label + " reads on the popup: " + item.color + ", " + ratio.toFixed(2) + ":1")
+    })
+  }
+
   FloatingWindow {
     implicitWidth: 1920
     implicitHeight: 1080
@@ -196,6 +211,7 @@ ShellRoot {
     eq(panel.firewallLegacy, true, "the wide rule is the legacy one")
     eq(panel.firewallMessage, "Ports are open to every network. Remove the rule, then apply to limit it to this network.", "the wide-rule text")
     translated(panel.firewallMessage, "the wide-rule text")
+    readsOnPopup(FoamyI18n.t(panel.firewallMessage), 1, "the wide-rule text")
     firewall("remove", removed)
   }
   function removed() {
@@ -298,15 +314,8 @@ ShellRoot {
     firewall("verify", function () {
       eq(panel.firewallState, "error", "the firewall check reports the missing helper")
       eq(panel.firewallMessage, shell.unavailableText, "the firewall names the missing helper")
-      // The AirPlay section's error and the firewall's error both say it,
-      // readable on the popup (tests/runtime.py runs this mode in a theme
-      // whose red reads 2.70:1 there).
-      var said = shell.textsSaying(view, FoamyI18n.t(shell.unavailableText), [])
-      eq(said.length, 2, "the AirPlay section and the firewall show the missing-helper text")
-      said.forEach(function (item) {
-        var ratio = FoamyPalette.contrastRatio(item.color, FoamyPalette.background)
-        check(ratio >= 4.5, "the missing-helper text reads on the popup: " + item.color + ", " + ratio.toFixed(2) + ":1")
-      })
+      // The AirPlay section's error and the firewall's error both say it.
+      readsOnPopup(FoamyI18n.t(shell.unavailableText), 2, "the missing-helper text")
       panel.close()
       shell.finish()
     })
