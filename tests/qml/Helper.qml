@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 import "harness"
 import "plugin" as Audio
@@ -52,6 +53,34 @@ ShellRoot {
         return hit
     }
     return null
+  }
+
+  // Every Text under `item` whose text is `text`.
+  function textsSaying(item, text, found) {
+    if (!item)
+      return found
+    if (item.text === text && item.color !== undefined)
+      found.push(item)
+    var kids = item.children || []
+    for (var i = 0; i < kids.length; i++)
+      textsSaying(kids[i], text, found)
+    return found
+  }
+
+  // The `count` texts saying `text` read on the popup card as drawn.
+  // tests/runtime.py runs this scene in a theme whose red reads 2.70:1 on
+  // the popup; the first check proves that `raw`, the colour the texts are
+  // drawn from, is that dim there.
+  function readsOnPopup(text, raw, count, label) {
+    var card = panel.popup.cardItem.color
+    var rawRatio = FoamyPalette.contrastRatio(raw, card)
+    check(rawRatio < 4.5, label + ": the theme's raw colour is under 4.5:1 on the popup: " + raw + ", " + rawRatio.toFixed(2) + ":1")
+    var said = textsSaying(view, text, [])
+    eq(said.length, count, label + " is shown")
+    said.forEach(function (item) {
+      var ratio = FoamyPalette.contrastRatio(item.color, card)
+      check(ratio >= 4.5, label + " reads on the popup: " + item.color + ", " + ratio.toFixed(2) + ":1")
+    })
   }
 
   FloatingWindow {
@@ -184,6 +213,7 @@ ShellRoot {
     eq(panel.firewallLegacy, true, "the wide rule is the legacy one")
     eq(panel.firewallMessage, "Ports are open to every network. Remove the rule, then apply to limit it to this network.", "the wide-rule text")
     translated(panel.firewallMessage, "the wide-rule text")
+    readsOnPopup(FoamyI18n.t(panel.firewallMessage), Commons.Color.urgent, 1, "the wide-rule text")
     firewall("remove", removed)
   }
   function removed() {
@@ -286,6 +316,8 @@ ShellRoot {
     firewall("verify", function () {
       eq(panel.firewallState, "error", "the firewall check reports the missing helper")
       eq(panel.firewallMessage, shell.unavailableText, "the firewall names the missing helper")
+      // The AirPlay section's error and the firewall's error both say it.
+      readsOnPopup(FoamyI18n.t(shell.unavailableText), FoamyPalette.error, 2, "the missing-helper text")
       panel.close()
       shell.finish()
     })

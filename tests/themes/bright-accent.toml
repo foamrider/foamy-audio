@@ -1,0 +1,14 @@
+# A Nord-like dark theme for tests/qml/MutedMic.qml: a bright accent lights
+# the hero band, and the red needs 13 steps to read on its strongest fill,
+# so the stepping ends inside its limit. Values only; not a real Omarchy
+# theme.
+mode = "dark"
+accent = "#88c0d0"
+background = "#2e3440"
+foreground = "#d8dee9"
+muted = "#4c566a"
+red = "#bf616a"
+yellow = "#ebcb8b"
+green = "#a3be8c"
+cyan = "#88c0d0"
+blue = "#81a1c1"
