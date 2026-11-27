@@ -270,7 +270,9 @@ PanelKeyCatcher {
       },
       FoamyAction {
         iconName: view.audio.inputMuted ? "mic-off" : "mic"
-        foreground: view.audio.inputMuted ? Commons.Color.urgent : FoamyPalette.secondaryText
+        // On the hero band's fill under the action's hover fill, its
+        // strongest state (the band's glow is left out).
+        foreground: view.audio.inputMuted ? FoamyPalette.onSurface(Commons.Color.urgent, Qt.tint(FoamyPalette.bandFill, FoamyPalette.hoverFill)) : FoamyPalette.secondaryText
         enabled: view.audio.hasInput
         hasCursor: view.hasCursor("inputMute")
         tooltipText: FoamyI18n.t(view.audio.inputMuted ? "Unmute microphone" : "Mute microphone")
@@ -538,7 +540,7 @@ PanelKeyCatcher {
         textFormat: Text.PlainText
         horizontalAlignment: Text.AlignLeft
         wrapMode: Text.WordWrap
-        color: ["error", "conflict", "wide"].indexOf(view.audio.firewallState) >= 0 ? Commons.Color.urgent : FoamyPalette.secondaryText
+        color: view.audio.firewallState === "error" ? FoamyPalette.onSurface(FoamyPalette.error) : ["conflict", "wide"].indexOf(view.audio.firewallState) >= 0 ? FoamyPalette.onSurface(Commons.Color.urgent) : FoamyPalette.secondaryText
         font.family: FoamyStyle.fontFamily
         font.pixelSize: FoamyStyle.font.bodySmall
         Accessible.role: view.audio.firewallState === "error" ? Accessible.AlertMessage : Accessible.StaticText
@@ -577,7 +579,7 @@ PanelKeyCatcher {
       textFormat: Text.PlainText
       horizontalAlignment: Text.AlignLeft
       wrapMode: Text.WordWrap
-      color: Commons.Color.urgent
+      color: FoamyPalette.onSurface(FoamyPalette.error)
       font.family: FoamyStyle.fontFamily
       font.pixelSize: FoamyStyle.font.bodySmall
       Accessible.role: Accessible.AlertMessage

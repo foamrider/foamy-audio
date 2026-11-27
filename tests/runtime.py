@@ -327,6 +327,9 @@ def run_helper(mode):
         "4.5",
         (PLUGIN / "tests/qml/Helper.qml").read_text(),
         plugin=None,
+        # No helper: its error texts are checked in a dark theme with a dim
+        # red (2.70:1 on the popup), where they must lighten to read.
+        theme=KIT / "tests/fixtures/themes/dim-red.toml" if mode == "nohelper" else "dark",
         language="no",
         prefix=f"fa-hp-{mode}-",
         fakebin={name: FAKE for name in FAKES},
