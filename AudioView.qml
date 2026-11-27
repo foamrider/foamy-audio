@@ -85,6 +85,9 @@ PanelKeyCatcher {
     id: cursor
     count: view.stops.length
   }
+  // The keys moved the cursor last: the rows and buttons draw its accent
+  // border (FoamyCursor.byKeys).
+  readonly property bool cursorByKeys: cursor.byKeys
 
   function hasCursor(key) {
     return cursorKey === key
@@ -150,6 +153,7 @@ PanelKeyCatcher {
     var key = cursorKey
     if (headerStops.indexOf(key) >= 0) {
       cursor.index = Math.max(0, Math.min(headerStops.length - 1, cursor.index + direction))
+      cursor.byKeys = true
     } else if (key === "volume") {
       audio.setOutputVolume(audio.outputVolume + direction * step)
     } else {
@@ -187,20 +191,20 @@ PanelKeyCatcher {
   }
 
   onMoveRequested: function (dx, dy) {
-    if (dy !== 0) {
-      if (!cursor.active)
+    // The first key of either axis puts the cursor on the volume.
+    if (!cursor.active) {
+      if (dx !== 0 || dy !== 0) {
         cursor.index = stops.indexOf("volume")
-      else
-        cursor.move(dy)
-    } else if (dx !== 0) {
-      if (!cursor.active) {
-        cursor.index = stops.indexOf("volume")
-        return
+        cursor.byKeys = true
       }
+      return
+    }
+    if (dy !== 0)
+      cursor.move(dy)
+    else if (dx !== 0)
       // The host's key catcher already gives dx in reading order in a
       // mirrored panel, and the header row and every slider mirror with it.
       adjust(dx)
-    }
   }
   onActivateRequested: activateStop()
   onCloseRequested: audio.close()
@@ -252,6 +256,7 @@ PanelKeyCatcher {
     title: FoamyI18n.t("Audio")
     meta: view.audio.outputLabel || FoamyI18n.t("No output devices")
     settingsHasCursor: view.hasCursor("settings")
+    cursorByKeys: view.cursorByKeys
     onSettingsClicked: view.audio.openSettings()
     onSettingsHovered: function (hovered) {
       if (hovered)
@@ -263,6 +268,7 @@ PanelKeyCatcher {
         foreground: FoamyPalette.secondaryText
         enabled: view.audio.hasOutput
         hasCursor: view.hasCursor("outputMute")
+        cursorByKeys: view.cursorByKeys
         tooltipText: FoamyI18n.t(view.audio.outputMuted ? "Unmute output" : "Mute output")
         onHoveredChanged: if (hovered)
           view.hover("outputMute")
@@ -276,6 +282,7 @@ PanelKeyCatcher {
         foreground: view.audio.inputMuted ? FoamyPalette.onSurface(Commons.Color.urgent, Qt.tint(Qt.tint(FoamyPalette.bandFillEnd, FoamyPalette.bandGlow), FoamyPalette.hoverFill)) : FoamyPalette.secondaryText
         enabled: view.audio.hasInput
         hasCursor: view.hasCursor("inputMute")
+        cursorByKeys: view.cursorByKeys
         tooltipText: FoamyI18n.t(view.audio.inputMuted ? "Unmute microphone" : "Mute microphone")
         onHoveredChanged: if (hovered)
           view.hover("inputMute")
@@ -459,6 +466,7 @@ PanelKeyCatcher {
       foreground: FoamyPalette.secondaryText
       enabled: view.audio.hasOutput || view.audio.hasInput
       hasCursor: view.hasCursor("muteAll")
+      cursorByKeys: view.cursorByKeys
       onHoveredChanged: if (hovered)
         view.hover("muteAll")
       onClicked: view.audio.toggleAllMuted()
@@ -567,6 +575,7 @@ PanelKeyCatcher {
       label: section.label
       expanded: section.expanded
       hasCursor: view.hasCursor("section:" + section.name)
+      byKeys: view.cursorByKeys
       onHovered: view.hover("section:" + section.name)
       onToggled: view.toggleSection(section.name)
       onHasCursorChanged: if (hasCursor)
@@ -625,6 +634,7 @@ PanelKeyCatcher {
     muted: view.audio.nodeMuted(target)
     step: 0.01
     hasCursor: view.hasCursor(key)
+    byKeys: view.cursorByKeys
     onHovered: view.hover(key)
     onHasCursorChanged: if (hasCursor)
       view.keepVisible(device)
